@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal placeholder launcher foreground: a solid rounded "V" on a square
+  108x108 dp viewport. Replace with a real asset once branding is decided.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,32 L46,72 L62,32 L70,32 L52,80 L40,80 L22,32 Z" />
+</vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backups are disabled (allowBackup="false" in manifest), but the platform
+  still wants this file to exist when targeting newer SDKs.
+  Exclude tokens from any future backup that ever gets re-enabled.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="vezir_secure_prefs.xml" />
+</full-backup-content>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose owns the actual theme; this base just provides a Material3
+         starting point so the system bars/inset handling behaves. -->
+    <style name="Theme.Vezir"
+        parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

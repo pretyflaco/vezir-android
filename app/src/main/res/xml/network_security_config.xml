@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is allowed only for the specific Tailscale-style hosts
+  listed below. HTTPS is allowed everywhere. Anything else is rejected.
+
+  Build-time list. To add a host the operator controls, edit this file
+  and rebuild. v1 ships with no preset cleartext hosts; the user must
+  point the app at a host they edit in here.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+    Example: allow cleartext to muscle.tail178bd.ts.net only.
+    Uncomment and adjust before building, or duplicate per host.
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">muscle.tail178bd.ts.net</domain>
+    </domain-config>
+    -->
+</network-security-config>
