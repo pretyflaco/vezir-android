@@ -113,3 +113,63 @@ class RmsDbfsTest {
         assertTrue(rmsDbfs(s, 320) >= -0.5f)
     }
 }
+
+class DownmixToMonoTest {
+
+    @Test
+    fun monoIsAMemcpy() {
+        val src = shortArrayOf(1, 2, 3, 4, 5)
+        val out = ShortArray(5)
+        downmixToMono(src, 5, channels = 1, out = out)
+        for (i in src.indices) assertEquals(src[i], out[i])
+    }
+
+    @Test
+    fun stereoAveragesChannels() {
+        // L=1000 R=2000 -> avg=1500 per frame
+        val src = ShortArray(8) { if (it % 2 == 0) 1000 else 2000 }
+        val out = ShortArray(4)
+        downmixToMono(src, 8, channels = 2, out = out)
+        for (i in 0 until 4) assertEquals(1500, out[i].toInt())
+    }
+
+    @Test
+    fun fiveOneAveragesAllChannels() {
+        val channels = 6
+        val frames = 3
+        val src = ShortArray(frames * channels) { (it % channels * 100).toShort() } // 0,100,200,300,400,500
+        val out = ShortArray(frames)
+        downmixToMono(src, src.size, channels, out)
+        // Per-frame sum 0+100+...+500 = 1500; /6 = 250
+        for (i in 0 until frames) assertEquals(250, out[i].toInt())
+    }
+}
+
+class LooksLikeOggsTest {
+
+    @Test
+    fun acceptsOggsHeader() {
+        val data = byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte(), 0x00)
+        assertTrue(looksLikeOggs(data))
+    }
+
+    @Test
+    fun rejectsTooShort() {
+        assertTrue(!looksLikeOggs(byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte())))
+    }
+
+    @Test
+    fun rejectsWrongMagic() {
+        val data = byteArrayOf('R'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(), 'F'.code.toByte())
+        assertTrue(!looksLikeOggs(data))
+    }
+
+    @Test
+    fun usesExplicitLengthBound() {
+        val data = ByteArray(8)
+        data[0] = 'O'.code.toByte(); data[1] = 'g'.code.toByte()
+        data[2] = 'g'.code.toByte(); data[3] = 'S'.code.toByte()
+        assertTrue(!looksLikeOggs(data, length = 3))
+        assertTrue(looksLikeOggs(data, length = 4))
+    }
+}

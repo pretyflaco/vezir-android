@@ -155,6 +155,32 @@ fun copyClipped(src: ShortArray, count: Int, out: ShortArray, gain: Float = 1.0f
     }
 }
 
+/**
+ * Downmix interleaved PCM Int16 to mono by averaging channels per frame.
+ * Stable across channels=1 (memcpy) and channels>=2.
+ */
+fun downmixToMono(src: ShortArray, sampleCount: Int, channels: Int, out: ShortArray) {
+    require(channels >= 1) { "channels must be >= 1" }
+    require(out.size >= sampleCount / channels) { "out too small for downmix" }
+    if (channels == 1) {
+        System.arraycopy(src, 0, out, 0, sampleCount)
+        return
+    }
+    val frames = sampleCount / channels
+    for (f in 0 until frames) {
+        var sum = 0
+        for (c in 0 until channels) sum += src[f * channels + c].toInt()
+        out[f] = (sum / channels).toShort()
+    }
+}
+
+/** True if the first 4 bytes of [data] are the Ogg "OggS" magic. */
+fun looksLikeOggs(data: ByteArray, length: Int = data.size): Boolean {
+    if (length < 4) return false
+    return data[0] == 'O'.code.toByte() && data[1] == 'g'.code.toByte() &&
+        data[2] == 'g'.code.toByte() && data[3] == 'S'.code.toByte()
+}
+
 /** RMS of an Int16 mono buffer in dBFS, clamped to [-90, 0]. */
 fun rmsDbfs(samples: ShortArray, count: Int): Float {
     if (count <= 0) return -90f

@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
+import com.vezir.android.ui.ImportScreen
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SetupScreen
 import com.vezir.android.ui.UploadScreen
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
 private sealed class Screen {
     object Setup : Screen()
     object Record : Screen()
+    object Import : Screen()
     data class Upload(val uri: Uri, val fileName: String, val title: String?) : Screen()
 }
 
@@ -75,6 +77,11 @@ private fun AppRoot() {
                 screen = Screen.Setup
             },
             onUpload = { uri, name, title -> screen = Screen.Upload(uri, name, title) },
+            onImport = { screen = Screen.Import },
+        )
+        Screen.Import -> ImportScreen(
+            onCancel = { screen = Screen.Record },
+            onImported = { uri, name -> screen = Screen.Upload(uri, name, null) },
         )
         is Screen.Upload -> UploadScreen(
             prefs = prefs,

@@ -59,6 +59,7 @@ fun RecordScreen(
     prefs: Prefs,
     onSignOut: () -> Unit,
     onUpload: (uri: android.net.Uri, fileName: String, title: String?) -> Unit,
+    onImport: () -> Unit,
 ) {
     val context = LocalContext.current
     val snapshot by CaptureController.state.collectAsState()
@@ -224,8 +225,14 @@ fun RecordScreen(
             ) { Text("Dismiss") }
         }
 
-        OutlinedButton(onClick = { /* M4 */ }, enabled = false, modifier = Modifier.fillMaxWidth()) {
-            Text("Import existing recording (M4)")
+        OutlinedButton(
+            onClick = onImport,
+            enabled = snapshot.state == CaptureController.State.IDLE ||
+                snapshot.state == CaptureController.State.FINISHED ||
+                snapshot.state == CaptureController.State.ERROR,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Import existing recording")
         }
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
             Text("Sign out (clear token)")
