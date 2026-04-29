@@ -1,10 +1,19 @@
 package com.vezir.android
 
 import android.app.Application
+import com.vezir.android.capture.CaptureService
 
 /**
- * Application class. Used as a process-wide hook for things M2/M3 will need
- * (notification channels for the capture foreground service, the OkHttp
- * client singleton, etc.). Empty for M1.
+ * Application class. Process-wide init hook.
+ *
+ * Currently:
+ *   - Pre-creates the capture-service notification channel so the channel
+ *     exists before [CaptureService] tries to call startForeground(),
+ *     even though the service also creates it defensively in onCreate().
  */
-class VezirApp : Application()
+class VezirApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        CaptureService.ensureNotificationChannel(this)
+    }
+}

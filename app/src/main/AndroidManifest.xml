@@ -47,13 +47,14 @@
             </intent-filter>
         </activity>
 
-        <!-- Capture foreground service (M2). Declared here so M2 only
-             needs to drop in the implementation class. -->
-        <!--
+        <!-- Capture foreground service (M2). Owns the AudioRecord
+             streams, the resampler/mixer, and the on-device Opus
+             encoder. Lifetime is bound to the active recording session;
+             the service self-stops on user "Stop", on the 3h hard cap,
+             or on capture-side error. -->
         <service
             android:name=".capture.CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone" />
-        -->
     </application>
 </manifest>
