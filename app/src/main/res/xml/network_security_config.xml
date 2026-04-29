@@ -14,12 +14,13 @@
         </trust-anchors>
     </base-config>
 
-    <!--
-    Example: allow cleartext to muscle.tail178bd.ts.net only.
-    Uncomment and adjust before building, or duplicate per host.
-
+    <!-- Cleartext allow-list for known Tailscale-only Vezir servers.
+         <domain> does not accept CIDR; list each FQDN/IP individually.
+         Add hosts here and rebuild to point this APK at a different
+         server. -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">muscle.tail178bd.ts.net</domain>
+        <!-- Tailscale IP fallback when MagicDNS isn't available. -->
+        <domain includeSubdomains="false">100.107.34.79</domain>
     </domain-config>
-    -->
 </network-security-config>
