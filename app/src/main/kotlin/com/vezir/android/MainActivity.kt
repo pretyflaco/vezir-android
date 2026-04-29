@@ -14,9 +14,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import com.vezir.android.data.Prefs
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SetupScreen
+import com.vezir.android.ui.UploadScreen
 import com.vezir.android.ui.theme.VezirTheme
 
 /**
@@ -42,7 +44,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Setup, Record }
+private sealed class Screen {
+    object Setup : Screen()
+    object Record : Screen()
+    data class Upload(val uri: Uri, val fileName: String, val title: String?) : Screen()
+}
 
 @Composable
 private fun AppRoot() {
@@ -50,15 +56,14 @@ private fun AppRoot() {
     val prefs = remember { Prefs(context) }
 
     var screen by remember {
-        mutableStateOf(if (prefs.isConfigured()) Screen.Record else Screen.Setup)
+        mutableStateOf<Screen>(if (prefs.isConfigured()) Screen.Record else Screen.Setup)
     }
 
-    // Re-evaluate screen on prefs change (Setup -> Record after enrollment).
     LaunchedEffect(Unit) {
-        if (prefs.isConfigured()) screen = Screen.Record
+        if (prefs.isConfigured() && screen is Screen.Setup) screen = Screen.Record
     }
 
-    when (screen) {
+    when (val s = screen) {
         Screen.Setup -> SetupScreen(
             prefs = prefs,
             onConfigured = { screen = Screen.Record },
@@ -69,6 +74,14 @@ private fun AppRoot() {
                 prefs.clear()
                 screen = Screen.Setup
             },
+            onUpload = { uri, name, title -> screen = Screen.Upload(uri, name, title) },
+        )
+        is Screen.Upload -> UploadScreen(
+            prefs = prefs,
+            contentUri = s.uri,
+            fileName = s.fileName,
+            title = s.title,
+            onDismiss = { screen = Screen.Record },
         )
     }
 }

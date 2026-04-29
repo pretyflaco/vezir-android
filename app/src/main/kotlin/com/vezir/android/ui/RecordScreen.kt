@@ -58,6 +58,7 @@ import com.vezir.android.data.Prefs
 fun RecordScreen(
     prefs: Prefs,
     onSignOut: () -> Unit,
+    onUpload: (uri: android.net.Uri, fileName: String, title: String?) -> Unit,
 ) {
     val context = LocalContext.current
     val snapshot by CaptureController.state.collectAsState()
@@ -186,17 +187,27 @@ fun RecordScreen(
 
         if (snapshot.state == CaptureController.State.FINISHED) {
             Text(
-                "Recording saved to ${snapshot.displayPath ?: "(unknown path)"}.\n" +
-                    "Upload will land in the next milestone (M3). Use Share for now.",
+                "Recording saved to ${snapshot.displayPath ?: "(unknown path)"}.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            val shareUri = snapshot.outputUri
+            val finishedUri = snapshot.outputUri
+            val finishedName = snapshot.displayName ?: "vezir.ogg"
+            val finishedTitle = title.ifBlank { null }
+            Button(
+                onClick = {
+                    if (finishedUri != null) {
+                        onUpload(finishedUri, finishedName, finishedTitle)
+                    }
+                },
+                enabled = finishedUri != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Upload to vezir") }
             OutlinedButton(
                 onClick = {
-                    if (shareUri != null) {
+                    if (finishedUri != null) {
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "audio/ogg"
-                            putExtra(Intent.EXTRA_STREAM, shareUri)
+                            putExtra(Intent.EXTRA_STREAM, finishedUri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                         context.startActivity(
@@ -204,9 +215,9 @@ fun RecordScreen(
                         )
                     }
                 },
-                enabled = shareUri != null,
+                enabled = finishedUri != null,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Share recording") }
+            ) { Text("Share (manual)") }
             OutlinedButton(
                 onClick = { CaptureController.acknowledgeFinished() },
                 modifier = Modifier.fillMaxWidth(),
