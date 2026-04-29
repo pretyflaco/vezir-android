@@ -29,7 +29,6 @@ import com.vezir.android.audio.PcmResampler
 import com.vezir.android.audio.copyClipped
 import com.vezir.android.audio.mixAndClip
 import com.vezir.android.audio.rmsDbfs
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -203,9 +202,26 @@ class CaptureService : Service() {
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO is requested by the UI before start
     private fun runCapture(projection: MediaProjection, title: String?) {
-        val outDir = File(getExternalFilesDir(null), "recordings").apply { mkdirs() }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val outFile = File(outDir, "vezir-$stamp.ogg")
+        val displayName = "vezir-$stamp.ogg"
+        val target = RecordingStorage.create(this, displayName)
+        try {
+            runCaptureWithTarget(projection, title, target)
+        } catch (t: Throwable) {
+            // Capture failed before completion; remove the empty/partial
+            // MediaStore (or fallback file) entry rather than leaving a
+            // 0-byte ghost in the user's Music app.
+            runCatching { target.deleteOnError(this) }
+            throw t
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun runCaptureWithTarget(
+        projection: MediaProjection,
+        title: String?,
+        target: RecordingStorage.RecordingTarget,
+    ) {
 
         // ── playback (system audio) capture ──
         val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
@@ -247,7 +263,7 @@ class CaptureService : Service() {
 
         val playbackResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 2)
         val micResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 1)
-        val encoder = OpusEncoder(outFile, sampleRate = OUTPUT_SAMPLE_RATE, channels = 1)
+        val encoder = OpusEncoder(target.output, sampleRate = OUTPUT_SAMPLE_RATE, channels = 1)
 
         val maxMs = BuildConfig.MAX_RECORDING_MILLIS
         val readChunkFrames = INPUT_SAMPLE_RATE / 50          // 20 ms
@@ -270,7 +286,9 @@ class CaptureService : Service() {
         CaptureController.update {
             it.copy(
                 state = CaptureController.State.RECORDING,
-                outputFile = outFile,
+                outputUri = target.uri,
+                displayName = target.displayName,
+                displayPath = target.displayPath,
                 errorMessage = null,
             )
         }
@@ -340,7 +358,7 @@ class CaptureService : Service() {
                 if (toEncode > 0) encoder.feed(mixBuf, toEncode)
 
                 if (now - lastNotifMs >= 1_000L) {
-                    val bytes = outFile.length()
+                    val bytes = target.output.bytesWritten
                     val pdb = pbDb
                     val mdb = mcDb
                     val silent = playbackSilentLatched
@@ -364,14 +382,22 @@ class CaptureService : Service() {
             runCatching { micRecord?.stop() }
             runCatching { playbackRecord.release() }
             runCatching { micRecord?.release() }
+            // encoder.stopAndClose() drains and closes the OutputStream we
+            // got from RecordingStorage; that flushes everything to disk
+            // (or to MediaStore, still IS_PENDING=1).
             runCatching { encoder.stopAndClose() }
+            // Now mark the MediaStore entry visible to the rest of the
+            // system. No-op for the file:// fallback.
+            target.finalize(this)
 
-            val endBytes = outFile.length()
+            val endBytes = target.output.bytesWritten
             CaptureController.update {
                 it.copy(
                     state = CaptureController.State.FINISHED,
                     bytesWritten = endBytes,
-                    outputFile = outFile,
+                    outputUri = target.uri,
+                    displayName = target.displayName,
+                    displayPath = target.displayPath,
                 )
             }
         }

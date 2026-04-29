@@ -44,7 +44,7 @@ import kotlin.experimental.or
  * Thread-safety: not thread-safe. Use from a single encoder thread.
  */
 class OggOpusWriter(
-    private val output: OutputStream,
+    output: OutputStream,
     private val serial: Int,
     /** Channels in the encoded stream. We always emit mono. */
     private val channels: Int = 1,
@@ -52,8 +52,14 @@ class OggOpusWriter(
     private val inputSampleRate: Int = 16_000,
 ) : Closeable {
 
+    // Always go through a BufferedOutputStream so we don't issue a tiny
+    // syscall per Ogg page (~50 pages/s).
+    private val output: OutputStream =
+        if (output is BufferedOutputStream) output
+        else BufferedOutputStream(output)
+
     constructor(file: File, serial: Int) : this(
-        BufferedOutputStream(FileOutputStream(file)),
+        FileOutputStream(file) as OutputStream,
         serial,
     )
 

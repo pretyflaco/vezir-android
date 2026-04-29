@@ -1,9 +1,9 @@
 package com.vezir.android.capture
 
+import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.File
 
 /**
  * Process-wide singleton that lets the UI observe what
@@ -25,7 +25,12 @@ object CaptureController {
         val playbackRmsDbfs: Float = -90f,
         val micRmsDbfs: Float = -90f,
         val playbackSilent: Boolean = false,  // hint when only mic is audible
-        val outputFile: File? = null,
+        /** Content URI of the OGG (MediaStore content:// or file:// fallback). */
+        val outputUri: Uri? = null,
+        /** Filename only, e.g. "vezir-20260430-010839.ogg". */
+        val displayName: String? = null,
+        /** Human path like "Music/Vezir/vezir-...ogg" for UI display. */
+        val displayPath: String? = null,
         val errorMessage: String? = null,
     )
 

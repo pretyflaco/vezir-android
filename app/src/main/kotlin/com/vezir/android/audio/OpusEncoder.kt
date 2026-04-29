@@ -4,7 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.util.Log
-import java.io.File
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import kotlin.random.Random
 
@@ -26,7 +26,7 @@ import kotlin.random.Random
  * `frameSamples * (48000/inputRate)` after each frame.
  */
 class OpusEncoder(
-    output: File,
+    output: OutputStream,
     private val sampleRate: Int = 16_000,
     private val channels: Int = 1,
     bitrate: Int = 24_000,

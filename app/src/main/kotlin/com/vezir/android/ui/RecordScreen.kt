@@ -186,9 +186,27 @@ fun RecordScreen(
 
         if (snapshot.state == CaptureController.State.FINISHED) {
             Text(
-                "Recording saved. Upload will land in the next milestone (M3).",
+                "Recording saved to ${snapshot.displayPath ?: "(unknown path)"}.\n" +
+                    "Upload will land in the next milestone (M3). Use Share for now.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            val shareUri = snapshot.outputUri
+            OutlinedButton(
+                onClick = {
+                    if (shareUri != null) {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "audio/ogg"
+                            putExtra(Intent.EXTRA_STREAM, shareUri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(send, "Share recording"),
+                        )
+                    }
+                },
+                enabled = shareUri != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Share recording") }
             OutlinedButton(
                 onClick = { CaptureController.acknowledgeFinished() },
                 modifier = Modifier.fillMaxWidth(),
@@ -241,9 +259,9 @@ private fun StatusBlock(snapshot: CaptureController.Snapshot) {
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
         )
-        if (snapshot.outputFile != null) {
+        if (snapshot.displayPath != null) {
             Text(
-                "File: ${snapshot.outputFile.name}",
+                "File: ${snapshot.displayPath}",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
             )
