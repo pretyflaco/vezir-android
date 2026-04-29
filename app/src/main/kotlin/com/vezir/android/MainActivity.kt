@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
 import com.vezir.android.ui.ImportScreen
+import com.vezir.android.ui.QrScanScreen
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SetupScreen
 import com.vezir.android.ui.UploadScreen
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
 
 private sealed class Screen {
     object Setup : Screen()
+    object QrScan : Screen()
     object Record : Screen()
     object Import : Screen()
     data class Upload(val uri: Uri, val fileName: String, val title: String?) : Screen()
@@ -69,6 +71,15 @@ private fun AppRoot() {
         Screen.Setup -> SetupScreen(
             prefs = prefs,
             onConfigured = { screen = Screen.Record },
+            onScanQr = { screen = Screen.QrScan },
+        )
+        Screen.QrScan -> QrScanScreen(
+            onScanned = { payload ->
+                prefs.serverUrl = payload.url
+                prefs.token = payload.token
+                screen = Screen.Setup
+            },
+            onCancel = { screen = Screen.Setup },
         )
         Screen.Record -> RecordScreen(
             prefs = prefs,

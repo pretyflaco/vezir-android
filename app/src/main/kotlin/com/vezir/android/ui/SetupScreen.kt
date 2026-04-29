@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 fun SetupScreen(
     prefs: Prefs,
     onConfigured: () -> Unit,
+    onScanQr: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -101,6 +102,11 @@ fun SetupScreen(
         HorizontalDivider()
         Spacer(Modifier.height(4.dp))
 
+        Button(
+            onClick = onScanQr,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy,
+        ) { Text("Scan enrollment QR") }
         Text(
             "Or paste the JSON payload from /admin/enroll:",
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,

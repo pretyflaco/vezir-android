@@ -98,5 +98,21 @@ dependencies {
     // Coroutines.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // CameraX + ML Kit (M5: QR enrollment).
+    // CameraX gives us a Compose-friendly preview + frame analyser.
+    // ML Kit barcode-scanning is the bundled flavour: model is included
+    // in the APK so a freshly-installed phone can scan offline. The
+    // -gms variant downloads the model on demand and saves ~10 MB; we
+    // pick bundled to keep enrollment friction at zero.
+    val cameraxVersion = "1.3.4"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+    // Bridge between CameraX ImageAnalysis frames and ML Kit detectors,
+    // so we don't have to write our own ImageProxy -> InputImage adapter.
+    implementation("androidx.camera:camera-mlkit-vision:1.3.0-beta02")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     testImplementation("junit:junit:4.13.2")
 }
