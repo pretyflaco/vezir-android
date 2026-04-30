@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,26 +31,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.vezir.android.data.EnrollmentPayload
 
-/**
- * Camera-backed QR scanner. On a successful Vezir-enrollment payload
- * decode, [onScanned] is fired exactly once with the parsed payload and
- * the screen finishes.
- *
- * Falls back to "permission required" message when CAMERA isn't granted;
- * the user can either grant or tap Cancel to return to the manual-paste
- * Setup flow.
- */
 @Composable
 fun QrScanScreen(
     onScanned: (EnrollmentPayload) -> Unit,
@@ -77,28 +69,23 @@ fun QrScanScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (!hasPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Scan QR", style = MaterialTheme.typography.headlineSmall)
+    ScreenScaffold {
+        CompactBrandHeader(title = "scan QR")
+
         Text(
-            "Open /admin/enroll on the Vezir server in a browser, generate the QR, " +
-                "and point your camera at it.",
+            "Open /admin/enroll on the Vezir server and point the camera at " +
+                "the QR. The token is stored encrypted on this device.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(360.dp),
+                .height(360.dp)
+                .clip(RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (hasPermission) {
@@ -125,11 +112,7 @@ fun QrScanScreen(
         }
 
         if (status != null) {
-            Text(
-                status!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            MonoStatus(status!!, color = MaterialTheme.colorScheme.error)
         }
 
         OutlinedButton(
@@ -164,10 +147,6 @@ private fun CameraPreview(
                 )
                 scaleType = PreviewView.ScaleType.FILL_CENTER
             }
-            // Wire ML Kit barcode analyzer into CameraX. The
-            // androidx.camera:camera-mlkit-vision artifact provides
-            // MlKitAnalyzer which adapts CameraX ImageAnalysis frames
-            // for ML Kit detectors without us writing the bridge.
             controller.setImageAnalysisAnalyzer(
                 ContextCompat.getMainExecutor(ctx),
                 MlKitAnalyzer(
@@ -198,8 +177,6 @@ private fun CameraPreview(
 
     DisposableEffect(Unit) {
         onDispose {
-            // Release the controller and the ML Kit detector. Without
-            // these the camera stays bound until process death.
             controller.unbind()
             ProcessCameraProvider.getInstance(context).get().unbindAll()
             barcodeScanner.close()

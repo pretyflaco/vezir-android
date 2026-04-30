@@ -4,11 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -25,14 +24,6 @@ import androidx.compose.ui.unit.dp
 import com.vezir.android.data.Prefs
 import com.vezir.android.net.UploadController
 
-/**
- * Uploads a recording to the configured Vezir server, then polls
- * /api/sessions/{id} until the worker reports done/error.
- *
- * Triggers automatically on first composition with a non-null
- * [contentUri]; the caller is responsible for clearing the URI when
- * they want to dismiss/return to the recorder.
- */
 @Composable
 fun UploadScreen(
     prefs: Prefs,
@@ -47,11 +38,7 @@ fun UploadScreen(
     LaunchedEffect(contentUri, fileName) {
         val url = prefs.serverUrl
         val token = prefs.token
-        if (url.isNullOrBlank() || token.isNullOrBlank()) {
-            return@LaunchedEffect
-        }
-        // If the controller is already finished/erroring on the same
-        // sessionId, leave it alone; otherwise start a fresh upload.
+        if (url.isNullOrBlank() || token.isNullOrBlank()) return@LaunchedEffect
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
             UploadController.startUpload(
@@ -65,45 +52,96 @@ fun UploadScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Upload", style = MaterialTheme.typography.headlineSmall)
+    val pct = if (snapshot.totalBytes > 0)
+        (snapshot.sentBytes.toFloat() / snapshot.totalBytes.toFloat()).coerceIn(0f, 1f)
+    else 0f
+
+    ScreenScaffold {
+        CompactBrandHeader(title = "upload")
+
         Text(
-            "Sending $fileName to ${prefs.serverUrl ?: "(unset)"}.",
+            fileName,
             style = MaterialTheme.typography.bodyMedium,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            "to ${prefs.serverUrl ?: "(unset)"}",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        ProgressBlock(snapshot)
-
-        when (snapshot.state) {
-            UploadController.State.IDLE,
-            UploadController.State.UPLOADING -> {
-                // No actions; cancel via system back / dismiss
+        // Hero progress block.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "%.0f%%".format(pct * 100),
+                style = MaterialTheme.typography.displaySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+            if (snapshot.totalBytes > 0) {
+                LinearProgressIndicator(
+                    progress = { pct },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                MonoStatus(
+                    "${formatKib(snapshot.sentBytes)} / ${formatKib(snapshot.totalBytes)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            UploadController.State.POLLING,
-            UploadController.State.DONE -> {
-                if (snapshot.dashboardLoginUrl != null) {
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(snapshot.dashboardLoginUrl))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Open in dashboard") }
-                }
-            }
-            UploadController.State.ERROR -> {
-                Text(
-                    "Error: ${snapshot.errorMessage ?: "unknown"}",
-                    style = MaterialTheme.typography.bodySmall,
+            MonoStatus(
+                "state ${snapshot.state.name.lowercase()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (snapshot.attempt > 1 && snapshot.state == UploadController.State.UPLOADING) {
+                MonoStatus(
+                    "retry ${snapshot.attempt}/${snapshot.maxAttempts}; restarted from byte 0",
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            if (snapshot.sessionId != null) {
+                MonoStatus(
+                    "session ${snapshot.sessionId}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (snapshot.serverStatus != null) {
+                MonoStatus(
+                    "server ${snapshot.serverStatus}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (snapshot.serverError != null) {
+                MonoStatus(
+                    "server error: ${snapshot.serverError}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (snapshot.errorMessage != null) {
+                MonoStatus(
+                    "error: ${snapshot.errorMessage}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
+        if (snapshot.dashboardLoginUrl != null &&
+            (snapshot.state == UploadController.State.POLLING ||
+                snapshot.state == UploadController.State.DONE)) {
+            Button(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW,
+                        Uri.parse(snapshot.dashboardLoginUrl))
+                    context.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Open in dashboard") }
         }
 
         OutlinedButton(
@@ -125,58 +163,6 @@ fun UploadScreen(
     }
 }
 
-@Composable
-private fun ProgressBlock(snapshot: UploadController.Snapshot) {
-    val pct = if (snapshot.totalBytes > 0)
-        (snapshot.sentBytes.toFloat() / snapshot.totalBytes.toFloat()).coerceIn(0f, 1f)
-    else 0f
-    val sentKib = snapshot.sentBytes / 1024.0
-    val totKib = snapshot.totalBytes / 1024.0
-
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            "State: ${snapshot.state.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
-        )
-        if (snapshot.attempt > 1 && snapshot.state == UploadController.State.UPLOADING) {
-            Text(
-                "Retry ${snapshot.attempt}/${snapshot.maxAttempts} (restarted from byte 0)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        if (snapshot.totalBytes > 0) {
-            LinearProgressIndicator(
-                progress = { pct },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "%.1f / %.1f KiB  (%.1f%%)".format(sentKib, totKib, pct * 100),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-            )
-        }
-        if (snapshot.sessionId != null) {
-            Text(
-                "Session: ${snapshot.sessionId}",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-            )
-        }
-        if (snapshot.serverStatus != null) {
-            Text(
-                "Server status: ${snapshot.serverStatus}",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-            )
-        }
-        if (snapshot.serverError != null) {
-            Text(
-                "Server error: ${snapshot.serverError}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-    }
-}
+private fun formatKib(bytes: Long): String =
+    if (bytes < 1024) "$bytes B"
+    else "%.1f KiB".format(bytes / 1024.0)

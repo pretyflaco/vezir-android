@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Vezir brand mark for in-app use (Compose `painterResource(R.drawable.vezir_mark)`).
+
+  Same path data as pretyflaco/vezir/assets/logo/vezir-mark.svg.
+
+  No rounded-tile chrome here — that lives in the launcher icon. This
+  vector is for placing the mark inline on Compose surfaces (Setup,
+  Record, Upload, Import headers) where the surface is already chrome.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+
+    <path
+        android:fillColor="#111111"
+        android:pathData="M64,96 L64,64 L80,80 L96,64 L112,80 L128,64 L144,80 L160,64 L176,80 L192,64 L192,96 Z" />
+    <path
+        android:fillColor="#111111"
+        android:pathData="M92,96 L164,96 L176,196 L80,196 Z" />
+    <path
+        android:fillColor="#111111"
+        android:pathData="M48,196 L208,196 A6,6 0 0 1 214,202 L214,218 A6,6 0 0 1 208,224 L48,224 A6,6 0 0 1 42,218 L42,202 A6,6 0 0 1 48,196 Z" />
+    <path
+        android:fillColor="#FF6B35"
+        android:pathData="M128,24 A12,12 0 1 0 128,48 A12,12 0 1 0 128,24 Z" />
+</vector>

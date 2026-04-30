@@ -1,9 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+// Optional release-signing config. If keystore.properties is present we
+// build a signed release APK; otherwise assembleRelease falls back to
+// the debug keystore so CI / first-time clones still build.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hasReleaseSigning = keystoreProps.getProperty("storeFile") != null
 
 android {
     namespace = "com.vezir.android"
@@ -33,6 +44,17 @@ android {
         buildConfig = true
     }
 
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     // Cleartext HTTP is allowed only for the configured Tailscale-style
     // hosts via res/xml/network_security_config.xml. The manifest points at
     // that file; do not flip android:usesCleartextTraffic globally.
@@ -46,6 +68,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                // Fall back to the debug keystore so a release-flavour
+                // build at least produces a runnable APK on a fresh clone.
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -75,6 +104,9 @@ dependencies {
     implementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.13.1")
+    // androidx.core:core-splashscreen back-ports the Android 12+ splash
+    // API to API 23+. We use it for the brand mark splash on launch.
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")

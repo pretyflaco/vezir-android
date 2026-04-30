@@ -1,7 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Compose owns the actual theme; this base just provides a Material3
-         starting point so the system bars/inset handling behaves. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base theme. Compose owns the actual app chrome; this style just
+         provides the Activity-window-level surface and disables the
+         framework ActionBar. -->
     <style name="Theme.Vezir"
-        parent="android:Theme.Material.Light.NoActionBar" />
+        parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/vezir_surface</item>
+    </style>
+
+    <!-- Splash theme: applied to the launcher Activity so the OS draws
+         the vezir mark on a white background while the process spins
+         up. After installSplashScreen() is called, MainActivity
+         transitions to Theme.Vezir.
+
+         windowSplashScreenIconBackgroundColor (Android 12+) gives the
+         icon its own circular backdrop; we keep it the same surface
+         color so the mark reads as floating on the screen. -->
+    <style name="Theme.Vezir.Splash"
+        parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/vezir_surface</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/vezir_mark</item>
+        <item name="windowSplashScreenIconBackgroundColor" tools:targetApi="31">
+            @color/vezir_surface
+        </item>
+        <item name="postSplashScreenTheme">@style/Theme.Vezir</item>
+    </style>
 </resources>

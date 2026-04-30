@@ -1,72 +1,121 @@
+<p align="left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+            srcset="https://raw.githubusercontent.com/pretyflaco/vezir/main/assets/logo/vezir-logo-light.svg">
+    <img src="https://raw.githubusercontent.com/pretyflaco/vezir/main/assets/logo/vezir-logo.svg"
+         alt="vezir" width="320">
+  </picture>
+</p>
+
 # vezir-android
 
 Android thin client for [Vezir](https://github.com/pretyflaco/vezir).
 
-Records meeting audio on-device, encodes it to OGG/Opus, and uploads to a
-self-hosted vezir server, where the existing meetscribe pipeline handles
-transcription, diarization, summarization, and PDF generation.
+Records meeting audio on the phone (system playback + microphone),
+encodes it to OGG/Opus on-device, and uploads to a self-hosted Vezir
+server. The existing meetscribe pipeline on the server handles
+transcription, diarization, summarization, PDF generation, and sync to
+your meetings repo.
 
-This is the v1 milestone scaffold — see `MILESTONES.md` for the per-step
-plan. M1 ships:
+## Status
 
-- Setup screen (server URL + token, encrypted at rest).
-- `/health` reachability probe.
-- `/api/sessions` token validity probe.
-- Manual JSON-paste enrollment compatible with the server's `/admin/enroll`
-  QR payload.
+Alpha (0.1.0). Sideload only; no Play Store. End-to-end validated
+against a Blink dev-sync sandbox session: phone records a Google Meet
+meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
+at 16 kHz mono / 24 kbps, uploads to a Vezir server over Tailscale, and
+the server's worker produces a usable transcript + summary.
 
-Capture (MediaProjection + mic, OGG/Opus on-device, 3h hard cap), upload,
-status polling, SAF import, and camera-based QR scan land in M2–M5.
+## What it does
+
+| Action | How |
+|---|---|
+| Enroll device | Scan the QR rendered by the server's `/admin/enroll` page, or paste the JSON payload manually. |
+| Record meeting audio | Tap **Start recording**. Android shows the `MediaProjection` consent prompt. The app captures system playback (apps using `USAGE_MEDIA`/`USAGE_GAME`/`USAGE_UNKNOWN`) + microphone, mixes them with soft-clip, and encodes Opus. |
+| Stop | Tap **Stop**, or use the persistent notification's Stop action. 3h hard cap. |
+| Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg` — visible in every file manager and audio app. |
+| Upload | Tap **Upload to vezir**. OkHttp multipart `POST /upload` with progress, retries on connection / 5xx, restart-from-byte-0 on retry. Polls `/api/sessions/{id}` until terminal. |
+| Open dashboard | One-tap to the existing browser dashboard via `/login?token=...&next=/s/<id>`. |
+| Import existing recording | SAF picker → `MediaExtractor` → `MediaCodec` decode → resample → Opus. Samsung screen-recording MP4s, voice memos, prior Vezir OGGs all work. OGG inputs are stream-copied without re-encode. |
+
+## What it does not do (yet)
+
+- Native labelling UI; the server's web UI is used for that. Open the dashboard from the app.
+- Resumable / chunked upload. Current retries restart from byte 0.
+- Capture from apps that route audio through Android's communication channel (typically Signal calls, sometimes Zoom). The OS does not expose those streams to third-party recorders. The app detects 10 s of silent playback and surfaces a hint that we have likely fallen back to mic-only.
 
 ## Requirements
 
-- Android 10 (API 29) or newer on the device.
-- A reachable vezir server (`vezir serve`) and a token issued via
-  `vezir token issue --github <handle>` or, preferably,
-  `vezir token enroll --github <handle>`.
-- For Tailscale-only HTTP servers, the vezir host must be added to
+- Android 10 (API 29) or newer.
+- A reachable Vezir server running ≥ 0.1.2 with the `/admin/enroll` endpoint.
+- A token issued by the operator: `vezir token issue --github <handle>`.
+- For Tailscale HTTP servers, the host must be allow-listed in
   `app/src/main/res/xml/network_security_config.xml` before building.
+  Defaults: `muscle.tail178bd.ts.net` and the matching Tailscale IP.
+
+## Install
+
+The signed APK is published with each GitHub Release. Sideload it.
+
+```bash
+adb install -r vezir-android-0.1.0.apk
+```
+
+Or open the APK in your phone's file manager and let Android install it from "unknown sources".
 
 ## Build
 
-This repo does not check in the Gradle wrapper jar. Bootstrap once with
-a system Gradle 8.x:
+The Gradle wrapper jar is checked in, so:
 
 ```bash
-gradle wrapper --gradle-version 8.10 --distribution-type bin
-./gradlew assembleDebug
+./gradlew assembleDebug         # debug APK at app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease       # signed release APK (see Signing below)
+./gradlew test                  # JVM unit tests (no emulator)
 ```
 
-The unsigned debug APK is written to
-`app/build/outputs/apk/debug/app-debug.apk`.
+Build host requirements: JDK 17, Android SDK with `platforms/android-35`
+and `build-tools/35.0.0` installed.
 
-## Test
+### Signing the release build
 
-JVM-only unit tests run without an emulator:
+The release config reads keystore parameters from `keystore.properties`
+(gitignored). Create one alongside `build.gradle.kts`:
+
+```properties
+storeFile=/absolute/path/to/vezir-release.jks
+storePassword=...
+keyAlias=vezir
+keyPassword=...
+```
+
+Generate a fresh keystore once:
 
 ```bash
-./gradlew test
+keytool -genkey -v -keystore vezir-release.jks \
+  -keyalg RSA -keysize 4096 -validity 10000 -alias vezir
 ```
 
-## Onboarding flow (operator + scribe)
+Without `keystore.properties`, `assembleRelease` falls back to the debug keystore so CI builds still succeed.
 
-1. Operator runs on the vezir server:
+## Onboarding flow
 
-   ```bash
-   vezir token enroll --github <handle> --server https://muscle.tail178bd.ts.net:8000
-   ```
+On the server (operator):
 
-2. Operator opens the printed `/admin/enroll` URL in an authenticated
-   browser tab and pastes the URL + token into the form. The page
-   renders a QR code.
+```bash
+vezir token issue --github <handle>
+```
 
-3. Scribe opens Vezir on Android:
-   - Tap **Apply pasted JSON** and paste the JSON shown in the
-     `/admin/enroll` page's "Manual entry / payload" details, OR
-   - In M5 onward, tap **Scan QR** and point the camera at the page.
+Open `http://<server>:8000/admin/enroll` in a browser already signed
+in to Vezir. Paste the URL + token, hit **Generate QR**.
 
-4. Tap **Test connection** then **Verify token**, then
-   **Save and continue**.
+On the phone:
+
+1. Open Vezir.
+2. **Scan enrollment QR**, point at the screen.
+3. **Save and continue**.
+
+Manual paste of either the JSON payload (`{"v":1,"url":"...","token":"..."}`)
+or the URL + token directly works as a fallback when no camera is
+available.
 
 ## Security posture
 
@@ -74,11 +123,13 @@ JVM-only unit tests run without an emulator:
   (AES-256-GCM via Android Keystore). The pref file
   `vezir_secure_prefs.xml` is excluded from cloud backup and device
   transfer.
-- HTTPS by default. Cleartext HTTP is allowed only for hosts explicitly
-  listed in `network_security_config.xml` at build time. The shipped
-  config has no preset cleartext hosts; you must add yours and rebuild.
-- v1 is intended for sideload distribution from GitHub Releases. It is
-  not a Play Store target.
+- HTTPS by default. Cleartext HTTP is allowed only for the hosts listed
+  in `network_security_config.xml` at build time.
+- The recording itself is stored unencrypted in `Music/Vezir/`. Treat
+  the phone's storage with the same trust posture you treat your laptop's
+  `~/meet-recordings/`.
+- Tokens issued by the server are bearer tokens. Lose your phone, run
+  `vezir token revoke --github <handle>` on the server.
 
 ## License
 

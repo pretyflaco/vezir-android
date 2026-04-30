@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Vezir horizontal lockup (mark + wordmark) for in-app brand headers.
+
+  Path data ported from pretyflaco/vezir/assets/logo/vezir-logo.svg.
+  The wordmark glyphs are outlined paths so we ship no font files.
+
+  Wordmark coordinates in the source SVG were drawn upside-down then
+  flipped via `scale(... -...)`. Android <vector> handles this via a
+  <group> with scaleY=-1 around the wordmark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="51dp"
+    android:viewportWidth="632"
+    android:viewportHeight="200">
+
+    <!-- Mark, scaled to fit alongside the wordmark. The source SVG
+         wraps this in scale(0.78125) on a 256-unit base; we apply the
+         same scale via a <group>. -->
+    <group
+        android:scaleX="0.78125"
+        android:scaleY="0.78125">
+
+        <path
+            android:fillColor="#111111"
+            android:pathData="M64,96 L64,64 L80,80 L96,64 L112,80 L128,64 L144,80 L160,64 L176,80 L192,64 L192,96 Z" />
+        <path
+            android:fillColor="#111111"
+            android:pathData="M92,96 L164,96 L176,196 L80,196 Z" />
+        <path
+            android:fillColor="#111111"
+            android:pathData="M48,196 L208,196 A6,6 0 0 1 214,202 L214,218 A6,6 0 0 1 208,224 L48,224 A6,6 0 0 1 42,218 L42,202 A6,6 0 0 1 48,196 Z" />
+        <path
+            android:fillColor="#FF6B35"
+            android:pathData="M128,24 A12,12 0 1 0 128,48 A12,12 0 1 0 128,24 Z" />
+    </group>
+
+    <!-- Wordmark "vezir" outlined to paths. The source SVG used a
+         negative-Y scale to flip the upside-down glyph data; we
+         reproduce that transform with a nested <group>.
+
+         translate(232,134) scale(0.13013698... -0.13013698...) -->
+    <group
+        android:translateX="232"
+        android:translateY="134"
+        android:scaleX="0.13013698"
+        android:scaleY="-0.13013698">
+
+        <!-- v -->
+        <path
+            android:fillColor="#111111"
+            android:pathData="M571,531 H411 L303,121 L200,531 H29 L208,0 H394 Z" />
+        <!-- e -->
+        <group android:translateX="580" android:translateY="0">
+            <path
+                android:fillColor="#111111"
+                android:pathData="M207,219 H551 C553,235 554,258 554,276 C554,447 457,549 305,549 C138,549 46,422 46,265 C46,100 140,-17 322,-17 C412,-17 484,13 534,56 L471,142 C429,115 383,98 335,98 C267,98 218,132 207,219 Z M305,443 C372,443 399,392 400,315 H205 C212,403 249,443 305,443 Z" />
+        </group>
+        <!-- z -->
+        <group android:translateX="1160" android:translateY="0">
+            <path
+                android:fillColor="#111111"
+                android:pathData="M259,120 519,420 V531 H94 V412 H336 L72,112 V0 H509 L524,120 Z" />
+        </group>
+        <!-- i -->
+        <group android:translateX="1740" android:translateY="0">
+            <path
+                android:fillColor="#111111"
+                android:pathData="M299,809 C244,809 205,770 205,720 C205,669 244,631 299,631 C354,631 392,669 392,720 C392,770 354,809 299,809 Z M394,531 H91 V423 H236 V108 H86 V0 H530 V108 H394 Z" />
+        </group>
+        <!-- r -->
+        <group android:translateX="2320" android:translateY="0">
+            <path
+                android:fillColor="#111111"
+                android:pathData="M475,547 C390,547 332,503 294,412 L266,531 H75 V426 H145 V106 H75 V0 H408 V106 H303 V258 C328,337 374,396 434,407 V309 H534 L563,531 C538,541 511,547 475,547 Z" />
+        </group>
+    </group>
+</vector>

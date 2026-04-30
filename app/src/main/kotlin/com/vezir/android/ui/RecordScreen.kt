@@ -11,26 +11,29 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -42,17 +45,17 @@ import com.vezir.android.capture.CaptureService
 import com.vezir.android.data.Prefs
 
 /**
- * v1 record screen.
+ * Record screen.
  *
- * Flow:
- *   1. Compose form for an optional title.
- *   2. Tap "Start recording" → request RECORD_AUDIO + POST_NOTIFICATIONS,
- *      then launch the MediaProjection consent prompt.
- *   3. On consent, start [CaptureService] which owns the capture pipeline.
- *   4. Live elapsed/RMS/file-size from [CaptureController.state].
- *   5. Tap "Stop recording" → service drains, finalizes the OGG, returns
- *      to FINISHED state.
- *   6. M3 will wire the FINISHED state to upload + dashboard handoff.
+ * Layout pass (M5.1):
+ *   - Compact brand header at top.
+ *   - Optional title field.
+ *   - Centered hero block: large monospace elapsed time, optional
+ *     pulsing coral RecordingDot when state is RECORDING, mic + playback
+ *     dBFS readouts, file path.
+ *   - Single primary CTA (filled coral): Start / Stop, sized large.
+ *   - Secondary actions (Import / Sign out / Share / Upload) collapsed
+ *     into a discrete bottom row of TextButtons or OutlinedButtons.
  */
 @Composable
 fun RecordScreen(
@@ -68,14 +71,12 @@ fun RecordScreen(
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
 
-    // ── Runtime permission requesters ──
     val recordAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { results ->
         val allGranted = results.values.all { it }
         if (allGranted) {
             permissionStatus = null
-            // Continue: ask for MediaProjection consent.
             pendingStart = true
         } else {
             permissionStatus = "RECORD_AUDIO is required. " +
@@ -87,7 +88,6 @@ fun RecordScreen(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            // Launch the foreground capture service.
             val startIntent = CaptureService.startIntent(
                 context, result.resultCode, result.data!!, title.ifBlank { null },
             )
@@ -98,34 +98,23 @@ fun RecordScreen(
         pendingStart = false
     }
 
-    // When permissions are granted, kick the projection consent prompt.
     if (pendingStart) {
         val mpm = context.getSystemService(MediaProjectionManager::class.java)
         val intent = mpm.createScreenCaptureIntent()
-        // LaunchedEffect-equivalent guard: only fire once per pendingStart=true
         SideEffectOnce(pendingStart) {
             mediaProjectionLauncher.launch(intent)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Vezir", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Record a meeting on this device. Audio is encoded to OGG/Opus " +
-                "on-device and saved locally; upload lands in the next milestone.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text("Server: ${prefs.serverUrl ?: "(unset)"}",
-            style = MaterialTheme.typography.bodySmall)
-        val maxHours = BuildConfig.MAX_RECORDING_MILLIS / 3_600_000.0
-        Text("Max recording duration: %.1f h (hard stop)".format(maxHours),
-            style = MaterialTheme.typography.bodySmall)
+    val recording = snapshot.state == CaptureController.State.RECORDING
+    val starting = snapshot.state == CaptureController.State.STARTING
+    val stopping = snapshot.state == CaptureController.State.STOPPING
+    val idleish = snapshot.state == CaptureController.State.IDLE ||
+        snapshot.state == CaptureController.State.FINISHED ||
+        snapshot.state == CaptureController.State.ERROR
+
+    ScreenScaffold {
+        CompactBrandHeader(title = "record")
 
         OutlinedTextField(
             value = title,
@@ -134,162 +123,52 @@ fun RecordScreen(
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default,
             modifier = Modifier.fillMaxWidth(),
-            enabled = snapshot.state == CaptureController.State.IDLE ||
-                snapshot.state == CaptureController.State.FINISHED ||
-                snapshot.state == CaptureController.State.ERROR,
+            enabled = idleish,
         )
 
-        Spacer(Modifier.height(4.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(4.dp))
-
-        // ── Live status ──
-        StatusBlock(snapshot)
-
-        // ── Action buttons ──
-        when (snapshot.state) {
-            CaptureController.State.IDLE,
-            CaptureController.State.FINISHED,
-            CaptureController.State.ERROR -> {
-                Button(
-                    onClick = { startFlow(context, recordAudioLauncher::launch) {
-                        // permissions already granted; kick consent directly
-                        pendingStart = true
-                    } },
-                    enabled = !pendingStart,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (snapshot.state == CaptureController.State.FINISHED)
-                            "Start another recording"
-                        else "Start recording"
-                    )
-                }
-            }
-            CaptureController.State.STARTING -> {
-                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("Starting…")
-                }
-            }
-            CaptureController.State.RECORDING -> {
-                Button(
-                    onClick = {
-                        context.startService(CaptureService.stopIntent(context))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Stop recording") }
-            }
-            CaptureController.State.STOPPING -> {
-                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("Stopping…")
-                }
-            }
-        }
-
-        if (snapshot.state == CaptureController.State.FINISHED) {
-            Text(
-                "Recording saved to ${snapshot.displayPath ?: "(unknown path)"}.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            val finishedUri = snapshot.outputUri
-            val finishedName = snapshot.displayName ?: "vezir.ogg"
-            val finishedTitle = title.ifBlank { null }
-            Button(
-                onClick = {
-                    if (finishedUri != null) {
-                        onUpload(finishedUri, finishedName, finishedTitle)
-                    }
-                },
-                enabled = finishedUri != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Upload to vezir") }
-            OutlinedButton(
-                onClick = {
-                    if (finishedUri != null) {
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "audio/ogg"
-                            putExtra(Intent.EXTRA_STREAM, finishedUri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(send, "Share recording"),
-                        )
-                    }
-                },
-                enabled = finishedUri != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Share (manual)") }
-            OutlinedButton(
-                onClick = { CaptureController.acknowledgeFinished() },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Dismiss") }
-        }
-
-        OutlinedButton(
-            onClick = onImport,
-            enabled = snapshot.state == CaptureController.State.IDLE ||
-                snapshot.state == CaptureController.State.FINISHED ||
-                snapshot.state == CaptureController.State.ERROR,
-            modifier = Modifier.fillMaxWidth(),
+        // Hero status block.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Import existing recording")
-        }
-        OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
-            Text("Sign out (clear token)")
-        }
-
-        if (permissionStatus != null) {
-            Text(permissionStatus!!,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace)
-        }
-    }
-}
-
-@Composable
-private fun StatusBlock(snapshot: CaptureController.Snapshot) {
-    val elapsed = formatHmsMillis(snapshot.elapsedMs)
-    val sizeKib = snapshot.bytesWritten / 1024.0
-    val pdb = snapshot.playbackRmsDbfs
-    val mdb = snapshot.micRmsDbfs
-
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            "State: ${snapshot.state.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(
-            "Elapsed: $elapsed",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(
-            "Size: %.1f KiB".format(sizeKib),
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(
-            "Levels: playback %s dBFS  mic %s dBFS".format(
-                if (pdb <= -89f) " --" else "%5.1f".format(pdb),
-                if (mdb <= -89f) " --" else "%5.1f".format(mdb),
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
-        if (snapshot.displayPath != null) {
-            Text(
-                "File: ${snapshot.displayPath}",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (recording) RecordingDot(sizeDp = 14)
+                Text(
+                    formatHmsMillis(snapshot.elapsedMs),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            MonoStatus(
+                "state ${snapshot.state.name.lowercase()}  " +
+                    "size ${formatSize(snapshot.bytesWritten)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            MonoStatus(
+                "play ${formatDb(snapshot.playbackRmsDbfs)}  " +
+                    "mic  ${formatDb(snapshot.micRmsDbfs)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (snapshot.displayPath != null) {
+                MonoStatus(
+                    snapshot.displayPath!!,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        if (snapshot.playbackSilent && snapshot.state == CaptureController.State.RECORDING) {
+
+        if (snapshot.playbackSilent && recording) {
             Text(
-                "Playback capture appears silent. " +
-                    "If your meeting app routes audio through the call/voice " +
-                    "channel (e.g. Signal), Android may block playback capture. " +
-                    "We are still recording the microphone.",
+                "Playback capture appears silent. If your meeting app routes " +
+                    "audio through the call/voice channel (e.g. Signal), " +
+                    "Android may block playback capture. We are still " +
+                    "recording the microphone.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -300,6 +179,113 @@ private fun StatusBlock(snapshot: CaptureController.Snapshot) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
+        }
+
+        // Primary CTA.
+        when {
+            idleish -> {
+                Button(
+                    onClick = { startFlow(context, recordAudioLauncher::launch) {
+                        pendingStart = true
+                    } },
+                    enabled = !pendingStart,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Text(
+                        if (snapshot.state == CaptureController.State.FINISHED)
+                            "Start another recording"
+                        else "Start recording"
+                    )
+                }
+            }
+            starting -> Button(
+                onClick = {}, enabled = false,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) { Text("Starting…") }
+            recording -> Button(
+                onClick = { context.startService(CaptureService.stopIntent(context)) },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) { Text("Stop recording") }
+            stopping -> Button(
+                onClick = {}, enabled = false,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) { Text("Stopping…") }
+            else -> {}
+        }
+
+        // Finished-state actions.
+        if (snapshot.state == CaptureController.State.FINISHED) {
+            val finishedUri = snapshot.outputUri
+            val finishedName = snapshot.displayName ?: "vezir.ogg"
+            val finishedTitle = title.ifBlank { null }
+
+            Button(
+                onClick = {
+                    if (finishedUri != null) {
+                        onUpload(finishedUri, finishedName, finishedTitle)
+                    }
+                },
+                enabled = finishedUri != null,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Upload to vezir") }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        if (finishedUri != null) {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "audio/ogg"
+                                putExtra(Intent.EXTRA_STREAM, finishedUri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(
+                                Intent.createChooser(send, "Share recording"),
+                            )
+                        }
+                    },
+                    enabled = finishedUri != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Share") }
+                OutlinedButton(
+                    onClick = { CaptureController.acknowledgeFinished() },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Dismiss") }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(4.dp))
+
+        // Secondary affordances row.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton(
+                onClick = onImport,
+                enabled = idleish,
+                modifier = Modifier.weight(1f),
+            ) { Text("Import recording") }
+            TextButton(
+                onClick = onSignOut,
+                modifier = Modifier.weight(1f),
+            ) { Text("Sign out") }
+        }
+
+        Text(
+            "Max recording duration: %.1f h (hard stop)"
+                .format(BuildConfig.MAX_RECORDING_MILLIS / 3_600_000.0),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (permissionStatus != null) {
+            MonoStatus(permissionStatus!!,
+                color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -325,11 +311,8 @@ private fun startFlow(
             needed += Manifest.permission.POST_NOTIFICATIONS
         }
     }
-    if (needed.isEmpty()) {
-        andThen()
-    } else {
-        launchPermissions(needed.toTypedArray())
-    }
+    if (needed.isEmpty()) andThen()
+    else launchPermissions(needed.toTypedArray())
 }
 
 private fun formatHmsMillis(ms: Long): String {
@@ -340,11 +323,15 @@ private fun formatHmsMillis(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
 
-/**
- * Like [androidx.compose.runtime.LaunchedEffect] but fires `block` exactly
- * once per `key` becoming true (compared to false). Keeps the
- * MediaProjection prompt from being relaunched on recomposition.
- */
+private fun formatSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.1f KiB".format(bytes / 1024.0)
+    else -> "%.1f MiB".format(bytes / (1024.0 * 1024.0))
+}
+
+private fun formatDb(db: Float): String =
+    if (db <= -89f) " --" else "%5.1f".format(db)
+
 @Composable
 private fun SideEffectOnce(key: Any, block: () -> Unit) {
     val triggered = remember { mutableStateOf(false) }

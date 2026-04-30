@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monochrome launcher variant for Android 13+ themed-icon mode.
+  Same silhouette as the brand mark, single fill color (the OS
+  re-tints this drawable based on the user's wallpaper palette).
+
+  The audio dot is included as part of the silhouette so the icon
+  remains recognizable when the OS strips color information.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+
+    <path
+        android:fillColor="#000000"
+        android:pathData="M64,96 L64,64 L80,80 L96,64 L112,80 L128,64 L144,80 L160,64 L176,80 L192,64 L192,96 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M92,96 L164,96 L176,196 L80,196 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M48,196 L208,196 A6,6 0 0 1 214,202 L214,218 A6,6 0 0 1 208,224 L48,224 A6,6 0 0 1 42,218 L42,202 A6,6 0 0 1 48,196 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M128,24 A12,12 0 1 0 128,48 A12,12 0 1 0 128,24 Z" />
+</vector>

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,13 +25,17 @@ import com.vezir.android.ui.UploadScreen
 import com.vezir.android.ui.theme.VezirTheme
 
 /**
- * Single-activity host. The app has only three screens for v1 (Setup,
- * Record, Upload+Session). For M1 only Setup is real; Record and Upload are
- * stubs filled in by M2/M3.
+ * Single-activity host. v1 has five screens (Setup, QrScan, Record,
+ * Import, Upload). State transitions are local to AppRoot; persistence
+ * lives in EncryptedSharedPreferences (Prefs).
  */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // installSplashScreen() must be called BEFORE super.onCreate() so
+        // the platform draws the brand mark from Theme.Vezir.Splash before
+        // the Activity content takes over.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
