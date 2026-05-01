@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,13 +20,14 @@ import com.vezir.android.ui.ImportScreen
 import com.vezir.android.ui.QrScanScreen
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SetupScreen
+import com.vezir.android.ui.SplashScreen
 import com.vezir.android.ui.UploadScreen
 import com.vezir.android.ui.theme.VezirTheme
 
 /**
- * Single-activity host. v1 has five screens (Setup, QrScan, Record,
- * Import, Upload). State transitions are local to AppRoot; persistence
- * lives in EncryptedSharedPreferences (Prefs).
+ * Single-activity host. App has six screens (Splash, Setup, QrScan,
+ * Record, Import, Upload). State transitions are local to AppRoot;
+ * persistence lives in EncryptedSharedPreferences (Prefs).
  */
 class MainActivity : ComponentActivity() {
 
@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed class Screen {
+    object Splash : Screen()
     object Setup : Screen()
     object QrScan : Screen()
     object Record : Screen()
@@ -64,15 +65,16 @@ private fun AppRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { Prefs(context) }
 
-    var screen by remember {
-        mutableStateOf<Screen>(if (prefs.isConfigured()) Screen.Record else Screen.Setup)
-    }
-
-    LaunchedEffect(Unit) {
-        if (prefs.isConfigured() && screen is Screen.Setup) screen = Screen.Record
-    }
+    // Always start on the brand splash; after its delay, route to
+    // Setup or Record depending on whether the device is enrolled.
+    var screen by remember { mutableStateOf<Screen>(Screen.Splash) }
 
     when (val s = screen) {
+        Screen.Splash -> SplashScreen(
+            onDone = {
+                screen = if (prefs.isConfigured()) Screen.Record else Screen.Setup
+            },
+        )
         Screen.Setup -> SetupScreen(
             prefs = prefs,
             onConfigured = { screen = Screen.Record },

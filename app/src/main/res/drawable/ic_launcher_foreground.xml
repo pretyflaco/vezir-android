@@ -3,18 +3,18 @@
   Adaptive launcher foreground.
 
   Path data is the brand mark from
-  pretyflaco/vezir/assets/logo/vezir-mark-app.svg, mapped onto a 108×108 dp
-  viewport. The mark itself is authored on a 256-unit grid; Android scales
-  uniformly when rendering at the launcher size.
+  pretyflaco/vezir/assets/logo/vezir-mark-app.svg, mapped onto a 256-unit
+  viewBox that is rendered at 108×108 dp by the launcher.
 
-  Adaptive icons reserve a 72×72 dp safe zone inside the 108×108 dp
-  viewport (corners may be clipped to circle/squircle/rounded-square at
-  the launcher's discretion). The mark lives entirely inside the safe
-  zone, with breathing room equal to the audio-dot diameter as required
-  by the brand book.
+  The mark itself spans y=24..224 in the source path data, which on a
+  256-unit viewBox left no breathing room inside the 72-dp safe zone of
+  the adaptive icon and got clipped by circular/squircle launcher masks.
 
-  Foreground only — background is configured in
-  mipmap-anydpi-v26/ic_launcher.xml as @color/ic_launcher_background.
+  Fix: wrap the mark paths in a <group> that scales them to 0.7×
+  centered at the viewBox midpoint (128,128). That keeps the chess-vizier
+  mark and coral audio dot well inside the safe zone with comfortable
+  padding around the edges, regardless of how aggressively a particular
+  launcher masks corners.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -22,20 +22,27 @@
     android:viewportWidth="256"
     android:viewportHeight="256">
 
-    <!-- Crown: 5 peaks, 4 valleys -->
-    <path
-        android:fillColor="#111111"
-        android:pathData="M64,96 L64,64 L80,80 L96,64 L112,80 L128,64 L144,80 L160,64 L176,80 L192,64 L192,96 Z" />
-    <!-- Tapered stem -->
-    <path
-        android:fillColor="#111111"
-        android:pathData="M92,96 L164,96 L176,196 L80,196 Z" />
-    <!-- Plinth -->
-    <path
-        android:fillColor="#111111"
-        android:pathData="M48,196 L208,196 A6,6 0 0 1 214,202 L214,218 A6,6 0 0 1 208,224 L48,224 A6,6 0 0 1 42,218 L42,202 A6,6 0 0 1 48,196 Z" />
-    <!-- Coral audio dot, 12 unit radius, centered above crown at (128, 36) -->
-    <path
-        android:fillColor="#FF6B35"
-        android:pathData="M128,24 A12,12 0 1 0 128,48 A12,12 0 1 0 128,24 Z" />
+    <group
+        android:scaleX="0.7"
+        android:scaleY="0.7"
+        android:pivotX="128"
+        android:pivotY="128">
+
+        <!-- Crown: 5 peaks, 4 valleys -->
+        <path
+            android:fillColor="#111111"
+            android:pathData="M64,96 L64,64 L80,80 L96,64 L112,80 L128,64 L144,80 L160,64 L176,80 L192,64 L192,96 Z" />
+        <!-- Tapered stem -->
+        <path
+            android:fillColor="#111111"
+            android:pathData="M92,96 L164,96 L176,196 L80,196 Z" />
+        <!-- Plinth -->
+        <path
+            android:fillColor="#111111"
+            android:pathData="M48,196 L208,196 A6,6 0 0 1 214,202 L214,218 A6,6 0 0 1 208,224 L48,224 A6,6 0 0 1 42,218 L42,202 A6,6 0 0 1 48,196 Z" />
+        <!-- Coral audio dot, 12 unit radius, centered above crown at (128, 36) -->
+        <path
+            android:fillColor="#FF6B35"
+            android:pathData="M128,24 A12,12 0 1 0 128,48 A12,12 0 1 0 128,24 Z" />
+    </group>
 </vector>
