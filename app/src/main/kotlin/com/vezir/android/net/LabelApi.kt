@@ -37,7 +37,7 @@ class LabelApi(
     @Serializable
     data class Speaker(
         val id: String,
-        val channel: Int? = null,
+        val channel: String? = null,   // meetscribe uses "mic"/"system", not int
         val sample_text: String? = null,
     )
 

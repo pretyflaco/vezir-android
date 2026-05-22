@@ -1,11 +1,18 @@
 package com.vezir.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -101,116 +108,137 @@ fun LabelScreen(
         loading = false
     }
 
-    ScreenScaffold {
-        CompactBrandHeader(title = "label speakers")
+    // Custom layout instead of ScreenScaffold: we need a LazyColumn for
+    // the speaker list, which cannot be nested inside ScreenScaffold's
+    // verticalScroll Column (nested scrollable containers crash).
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CompactBrandHeader(title = "label speakers")
 
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            return@ScreenScaffold
-        }
-
-        if (errorMsg != null) {
-            MonoStatus(errorMsg!!, color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                Text("Back")
+            if (loading) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
             }
-            return@ScreenScaffold
-        }
 
-        val data = labelData ?: return@ScreenScaffold
+            if (errorMsg != null) {
+                MonoStatus(errorMsg!!, color = MaterialTheme.colorScheme.error)
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                    Text("Back")
+                }
+                return@Column
+            }
 
-        Text(
-            "session ${data.session_id}",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            val data = labelData ?: return@Column
 
-        if (!data.audio_available) {
-            MonoStatus(
-                "audio deleted — listen to clips on the web dashboard if needed",
+            Text(
+                "session ${data.session_id}",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
 
-        if (clipError != null) {
-            MonoStatus(clipError!!, color = MaterialTheme.colorScheme.error)
-        }
-
-        // Speaker list.
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        ) {
-            items(data.speakers, key = { it.id }) { speaker ->
-                SpeakerCard(
-                    speaker = speaker,
-                    label = labelValues[speaker.id] ?: "",
-                    onLabelChange = { labelValues[speaker.id] = it },
-                    team = data.team,
-                    audioAvailable = data.audio_available,
-                    isPlaying = playingSpeaker == speaker.id,
-                    onPlay = {
-                        scope.launch {
-                            clipError = null
-                            clipPlayer.play(
-                                url = api.clipUrl(sessionId, speaker.id),
-                                speakerId = speaker.id,
-                                onComplete = { playingSpeaker = null },
-                                onError = { msg ->
-                                    clipError = "${speaker.id}: $msg"
-                                    playingSpeaker = null
-                                },
-                            )
-                            playingSpeaker = speaker.id
-                        }
-                    },
-                    onStop = {
-                        clipPlayer.stop()
-                        playingSpeaker = null
-                    },
+            if (!data.audio_available) {
+                MonoStatus(
+                    "audio deleted — listen to clips on the web dashboard if needed",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
 
-        // Submit.
-        if (submitting) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-        }
+            if (clipError != null) {
+                MonoStatus(clipError!!, color = MaterialTheme.colorScheme.error)
+            }
 
-        Button(
-            onClick = {
-                scope.launch {
-                    submitting = true
-                    clipPlayer.stop()
-                    val nonEmpty = labelValues.filter { it.value.isNotBlank() }
-                    when (val result = api.submitLabels(sessionId, nonEmpty)) {
-                        is LabelApi.Result.Ok -> {
-                            submitting = false
-                            onDone()
-                        }
-                        is LabelApi.Result.HttpError -> {
-                            errorMsg = "Submit failed: ${result.code} ${result.message}"
-                            submitting = false
-                        }
-                        is LabelApi.Result.NetworkError -> {
-                            errorMsg = "Network error: ${result.cause.message}"
-                            submitting = false
+            // Speaker list — LazyColumn gets remaining vertical space.
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) {
+                items(data.speakers, key = { it.id }) { speaker ->
+                    SpeakerCard(
+                        speaker = speaker,
+                        label = labelValues[speaker.id] ?: "",
+                        onLabelChange = { labelValues[speaker.id] = it },
+                        team = data.team,
+                        audioAvailable = data.audio_available,
+                        isPlaying = playingSpeaker == speaker.id,
+                        onPlay = {
+                            scope.launch {
+                                clipError = null
+                                clipPlayer.play(
+                                    url = api.clipUrl(sessionId, speaker.id),
+                                    speakerId = speaker.id,
+                                    onComplete = { playingSpeaker = null },
+                                    onError = { msg ->
+                                        clipError = "${speaker.id}: $msg"
+                                        playingSpeaker = null
+                                    },
+                                )
+                                playingSpeaker = speaker.id
+                            }
+                        },
+                        onStop = {
+                            clipPlayer.stop()
+                            playingSpeaker = null
+                        },
+                    )
+                }
+            }
+
+            // Submit.
+            if (submitting) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        submitting = true
+                        clipPlayer.stop()
+                        val nonEmpty = labelValues.filter { it.value.isNotBlank() }
+                        when (val result = api.submitLabels(sessionId, nonEmpty)) {
+                            is LabelApi.Result.Ok -> {
+                                submitting = false
+                                onDone()
+                            }
+                            is LabelApi.Result.HttpError -> {
+                                errorMsg = "Submit failed: ${result.code} ${result.message}"
+                                submitting = false
+                            }
+                            is LabelApi.Result.NetworkError -> {
+                                errorMsg = "Network error: ${result.cause.message}"
+                                submitting = false
+                            }
                         }
                     }
-                }
-            },
-            enabled = !submitting && labelValues.values.any { it.isNotBlank() },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-        ) { Text("Submit labels") }
+                },
+                enabled = !submitting && labelValues.values.any { it.isNotBlank() },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Submit labels") }
 
-        OutlinedButton(
-            onClick = {
-                clipPlayer.stop()
-                onCancel()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Cancel") }
+            OutlinedButton(
+                onClick = {
+                    clipPlayer.stop()
+                    onCancel()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Cancel") }
+        }
     }
 }
 
