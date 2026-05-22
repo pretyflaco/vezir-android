@@ -49,7 +49,12 @@ the server's worker produces a usable transcript + summary.
 ## Requirements
 
 - Android 10 (API 29) or newer.
-- A reachable Vezir server running ≥ 0.1.2 with the `/admin/enroll` endpoint.
+- A reachable Vezir server.  Minimum supported is **≥ 0.1.2** (for the
+  `/admin/enroll` device-enrollment endpoint and basic upload), but
+  **≥ 0.1.11** is recommended so the `summary_preset`, `auto_label`,
+  and `sync` form fields this app sends are actually honored.
+  Older servers silently ignore the new fields and behave as today
+  (server-default backend, always auto-label, always sync).
 - A token issued by the operator: `vezir token issue --github <handle>`.
 - For Tailscale HTTP servers, the host must be allow-listed in
   `app/src/main/res/xml/network_security_config.xml` before building.
