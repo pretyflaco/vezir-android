@@ -7,25 +7,29 @@ import kotlinx.serialization.json.Json
 /**
  * Versioned QR-payload schema produced by `vezir/server/enroll.py`:
  *
- *     {"v":1,"url":"http://muscle.tail178bd.ts.net:8000","token":"vzr_..."}
+ * v1:  {"v":1,"url":"http://...","token":"vzr_..."}
+ * v2:  {"v":2,"url":"https://...","token":"vzr_...","ca_pem":"-----BEGIN CERT..."}
  *
- * We accept exactly v=1 in this app build. Bumping `v` server-side without
- * shipping a matching app build will be rejected — by design.
+ * v2 adds the Caddy internal CA root certificate so the app can trust
+ * the server's TLS cert without a manual cert install on the device.
+ * `ca_pem` is optional even in v2 (some deployments use Let's Encrypt
+ * certs that are already in the system trust store).
  */
 @Serializable
 data class EnrollmentPayload(
     val v: Int,
     val url: String,
     val token: String,
+    val ca_pem: String? = null,
 ) {
     fun isValid(): Boolean =
-        v == SUPPORTED_VERSION &&
+        v in SUPPORTED_VERSIONS &&
             url.isNotBlank() &&
             (url.startsWith("http://") || url.startsWith("https://")) &&
             token.isNotBlank()
 
     companion object {
-        const val SUPPORTED_VERSION = 1
+        private val SUPPORTED_VERSIONS = setOf(1, 2)
 
         private val json = Json {
             ignoreUnknownKeys = true

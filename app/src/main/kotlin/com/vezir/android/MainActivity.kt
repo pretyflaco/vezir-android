@@ -91,6 +91,7 @@ private fun AppRoot() {
             onScanned = { payload ->
                 prefs.serverUrl = payload.url
                 prefs.token = payload.token
+                prefs.caPem = payload.ca_pem  // v2: store CA cert for OkHttp trust
                 screen = Screen.Setup
             },
             onCancel = { screen = Screen.Setup },

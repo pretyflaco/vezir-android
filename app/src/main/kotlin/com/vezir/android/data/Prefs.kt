@@ -93,6 +93,22 @@ class Prefs(context: Context) {
             prefs.edit().putBoolean(KEY_SYNC, value).apply()
         }
 
+    /**
+     * PEM-encoded CA certificate from a v2 enrollment QR payload.
+     *
+     * When present, OkHttp trusts this CA alongside the system CAs so
+     * the app can reach a vezir server fronted by Caddy's internal CA
+     * without a manual cert install on the device. Null for v1
+     * enrollments or v2 enrollments that omit `ca_pem`.
+     */
+    var caPem: String?
+        get() = prefs.getString(KEY_CA_PEM, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_CA_PEM) else putString(KEY_CA_PEM, value)
+            }.apply()
+        }
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -105,6 +121,7 @@ class Prefs(context: Context) {
         const val FILE_NAME = "vezir_secure_prefs"
         private const val KEY_URL = "vezir_url"
         private const val KEY_TOKEN = "vezir_token"
+        private const val KEY_CA_PEM = "vezir_ca_pem"
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
