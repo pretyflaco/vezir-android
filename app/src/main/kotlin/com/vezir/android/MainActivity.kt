@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
 import com.vezir.android.ui.ImportScreen
+import com.vezir.android.ui.LabelScreen
 import com.vezir.android.ui.QrScanScreen
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SetupScreen
@@ -65,6 +66,7 @@ private sealed class Screen {
         val autoLabel: Boolean,
         val sync: Boolean,
     ) : Screen()
+    data class Label(val sessionId: String) : Screen()
 }
 
 @Composable
@@ -127,6 +129,16 @@ private fun AppRoot() {
             autoLabel = s.autoLabel,
             sync = s.sync,
             onDismiss = { screen = Screen.Record },
+            onLabel = { sessionId -> screen = Screen.Label(sessionId) },
+        )
+        is Screen.Label -> LabelScreen(
+            prefs = prefs,
+            sessionId = s.sessionId,
+            onDone = {
+                // Return to upload screen to resume polling (syncing → done).
+                screen = Screen.Record
+            },
+            onCancel = { screen = Screen.Record },
         )
     }
 }

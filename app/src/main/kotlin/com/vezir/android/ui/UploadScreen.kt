@@ -34,6 +34,7 @@ fun UploadScreen(
     autoLabel: Boolean,
     sync: Boolean,
     onDismiss: () -> Unit,
+    onLabel: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snapshot by UploadController.state.collectAsState()
@@ -152,10 +153,20 @@ fun UploadScreen(
             }
         }
 
+        // Native labeling button: appears when server reports needs_labeling.
+        if (snapshot.serverStatus == "needs_labeling" &&
+            snapshot.sessionId != null &&
+            onLabel != null) {
+            Button(
+                onClick = { onLabel(snapshot.sessionId!!) },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Label speakers") }
+        }
+
         if (snapshot.dashboardLoginUrl != null &&
             (snapshot.state == UploadController.State.POLLING ||
                 snapshot.state == UploadController.State.DONE)) {
-            Button(
+            OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW,
                         Uri.parse(snapshot.dashboardLoginUrl))
