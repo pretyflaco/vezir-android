@@ -19,7 +19,7 @@ your meetings repo.
 
 ## Status
 
-Alpha (0.1.4). Sideload only; no Play Store. End-to-end validated
+Alpha (0.1.5). Sideload only; no Play Store. End-to-end validated
 against a Blink dev-sync sandbox session: phone records a Google Meet
 meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
 at 16 kHz mono / 24 kbps, uploads to a Vezir server over Tailscale, and
@@ -56,16 +56,26 @@ the server's worker produces a usable transcript + summary.
   Older servers silently ignore the new fields and behave as today
   (server-default backend, always auto-label, always sync).
 - A token issued by the operator: `vezir token issue --github <handle>`.
-- For Tailscale HTTP servers, the host must be allow-listed in
-  `app/src/main/res/xml/network_security_config.xml` before building.
-  Defaults: `muscle.tail178bd.ts.net` and the matching Tailscale IP.
+- A private-mesh VPN reachable from the phone to the server.  Two
+  options are documented and the shipped cleartext allow-list covers
+  both for muscle:
+  - **Tailscale**: `muscle.tail178bd.ts.net` and the matching
+    Tailscale IP `100.107.34.79`.  Install the Tailscale app from
+    Play Store / F-Droid and join the tailnet.
+  - **nostr-vpn**: muscle's tunnel IP `10.44.141.239` (added in
+    v0.1.5).  Install
+    [the nostr-vpn Android APK](https://github.com/mmalmi/nostr-vpn/releases/latest)
+    and import the team's invite (see the
+    [team onboarding wiki](https://github.com/blinkbitcoin/blink-wip/wiki/pretyflaco----2026-05-21-Vezir-Onboarding-with-nostr-vpn)).
+  - To add a different server, edit
+    `app/src/main/res/xml/network_security_config.xml` and rebuild.
 
 ## Install
 
 The signed APK is published with each GitHub Release. Sideload it.
 
 ```bash
-adb install -r vezir-android-0.1.4.apk
+adb install -r vezir-android-0.1.5.apk
 ```
 
 Or open the APK in your phone's file manager and let Android install it from "unknown sources".

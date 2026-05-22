@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Cleartext HTTP is allowed only for the specific Tailscale-style hosts
+  Cleartext HTTP is allowed only for the specific private-mesh hosts
   listed below. HTTPS is allowed everywhere. Anything else is rejected.
 
   Build-time list. To add a host the operator controls, edit this file
-  and rebuild. v1 ships with no preset cleartext hosts; the user must
-  point the app at a host they edit in here.
+  and rebuild. v1 shipped with no preset cleartext hosts; subsequent
+  releases ship the muscle endpoints across all team VPN options.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
@@ -14,13 +14,20 @@
         </trust-anchors>
     </base-config>
 
-    <!-- Cleartext allow-list for known Tailscale-only Vezir servers.
+    <!-- Cleartext allow-list for known private-mesh Vezir servers.
          <domain> does not accept CIDR; list each FQDN/IP individually.
          Add hosts here and rebuild to point this APK at a different
          server. -->
     <domain-config cleartextTrafficPermitted="true">
+        <!-- Tailscale MagicDNS name + IP for muscle. -->
         <domain includeSubdomains="false">muscle.tail178bd.ts.net</domain>
-        <!-- Tailscale IP fallback when MagicDNS isn't available. -->
         <domain includeSubdomains="false">100.107.34.79</domain>
+        <!-- nostr-vpn tunnel IP for muscle.  Added in v0.1.5 so the
+             Android client can reach the server over nvpn the same way
+             desktop clients already can.  nvpn does not ship a
+             MagicDNS-equivalent, so the IP is the only addressable
+             endpoint; update both this file and the wiki if muscle's
+             tunnel IP ever changes. -->
+        <domain includeSubdomains="false">10.44.141.239</domain>
     </domain-config>
 </network-security-config>
