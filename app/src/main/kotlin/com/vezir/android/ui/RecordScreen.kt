@@ -134,6 +134,8 @@ fun RecordScreen(
     }
 
     val recording = snapshot.state == CaptureController.State.RECORDING
+    val paused = snapshot.state == CaptureController.State.PAUSED
+    val active = recording || paused  // capture thread is alive
     val starting = snapshot.state == CaptureController.State.STARTING
     val stopping = snapshot.state == CaptureController.State.STOPPING
     val idleish = snapshot.state == CaptureController.State.IDLE ||
@@ -253,10 +255,19 @@ fun RecordScreen(
             ) {
                 if (recording) RecordingDot(sizeDp = 14)
                 Text(
-                    formatHmsMillis(snapshot.elapsedMs),
+                    formatHmsMillis(if (active) snapshot.recordingMs else snapshot.elapsedMs),
                     style = MaterialTheme.typography.displaySmall,
                     fontFamily = FontFamily.Monospace,
+                    color = if (paused) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface,
                 )
+                if (paused) {
+                    Text(
+                        "PAUSED",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
             MonoStatus(
                 "state ${snapshot.state.name.lowercase()}  " +
@@ -276,7 +287,7 @@ fun RecordScreen(
             }
         }
 
-        if (snapshot.playbackSilent && recording) {
+        if (snapshot.playbackSilent && active) {
             Text(
                 "Playback capture appears silent. If your meeting app routes " +
                     "audio through the call/voice channel (e.g. Signal), " +
@@ -315,10 +326,28 @@ fun RecordScreen(
                 onClick = {}, enabled = false,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) { Text("Starting…") }
-            recording -> Button(
-                onClick = { context.startService(CaptureService.stopIntent(context)) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) { Text("Stop recording") }
+            active -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            context.startService(
+                                Intent(context, CaptureService::class.java).apply {
+                                    action = CaptureService.ACTION_TOGGLE_PAUSE
+                                },
+                            )
+                        },
+                        modifier = Modifier.weight(1f).height(56.dp),
+                    ) { Text(if (paused) "Resume" else "Pause") }
+
+                    Button(
+                        onClick = { context.startService(CaptureService.stopIntent(context)) },
+                        modifier = Modifier.weight(1f).height(56.dp),
+                    ) { Text("Stop") }
+                }
+            }
             stopping -> Button(
                 onClick = {}, enabled = false,
                 modifier = Modifier.fillMaxWidth().height(56.dp),

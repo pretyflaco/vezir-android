@@ -16,11 +16,13 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object CaptureController {
 
-    enum class State { IDLE, STARTING, RECORDING, STOPPING, FINISHED, ERROR }
+    enum class State { IDLE, STARTING, RECORDING, PAUSED, STOPPING, FINISHED, ERROR }
 
     data class Snapshot(
         val state: State = State.IDLE,
         val elapsedMs: Long = 0L,
+        /** Time spent actively recording (elapsed minus paused). */
+        val recordingMs: Long = 0L,
         val bytesWritten: Long = 0L,
         val playbackRmsDbfs: Float = -90f,
         val micRmsDbfs: Float = -90f,

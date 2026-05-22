@@ -57,6 +57,7 @@ class CaptureService : Service() {
 
         const val ACTION_START = "com.vezir.android.capture.START"
         const val ACTION_STOP = "com.vezir.android.capture.STOP"
+        const val ACTION_TOGGLE_PAUSE = "com.vezir.android.capture.TOGGLE_PAUSE"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TITLE = "title"
@@ -100,6 +101,7 @@ class CaptureService : Service() {
 
     private var captureThread: Thread? = null
     @Volatile private var stopRequested: Boolean = false
+    @Volatile private var pauseRequested: Boolean = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -112,6 +114,7 @@ class CaptureService : Service() {
         when (intent?.action) {
             ACTION_START -> handleStart(intent)
             ACTION_STOP -> handleStop()
+            ACTION_TOGGLE_PAUSE -> handleTogglePause()
             else -> Log.w(TAG, "unknown action: ${intent?.action}")
         }
         return START_NOT_STICKY
@@ -187,6 +190,14 @@ class CaptureService : Service() {
         stopRequested = true
         // Capture thread polls stopRequested and exits gracefully; we don't
         // forcibly interrupt or AudioRecord can leave platform state messy.
+    }
+
+    private fun handleTogglePause() {
+        pauseRequested = !pauseRequested
+        val newState = if (pauseRequested)
+            CaptureController.State.PAUSED else CaptureController.State.RECORDING
+        CaptureController.update { it.copy(state = newState) }
+        Log.i(TAG, "pause toggled: paused=$pauseRequested")
     }
 
     private fun failStart(reason: String) {
@@ -282,6 +293,8 @@ class CaptureService : Service() {
         var lastNotifMs = -1L
         var playbackSilentSinceMs: Long = -1L
         var playbackSilentLatched = false
+        var totalPausedMs = 0L
+        var pauseStartMs = 0L
 
         CaptureController.update {
             it.copy(
@@ -302,6 +315,14 @@ class CaptureService : Service() {
                     break
                 }
 
+                // Handle pause transitions.
+                if (pauseRequested && pauseStartMs == 0L) {
+                    pauseStartMs = now
+                } else if (!pauseRequested && pauseStartMs > 0L) {
+                    totalPausedMs += now - pauseStartMs
+                    pauseStartMs = 0L
+                }
+
                 val pbRead = playbackRecord.read(
                     playbackBuf, 0, playbackBuf.size, AudioRecord.READ_BLOCKING,
                 )
@@ -311,6 +332,26 @@ class CaptureService : Service() {
 
                 if (pbRead < 0 || mcRead < 0) {
                     error("AudioRecord.read negative: pb=$pbRead mc=$mcRead")
+                }
+
+                // When paused, discard audio — keep reading so AudioRecord
+                // doesn't stall, but don't encode. The OGG will contain
+                // only contiguous non-paused audio.
+                if (pauseRequested) {
+                    val currentPausedMs = totalPausedMs + (now - pauseStartMs)
+                    val recMs = elapsedMs - currentPausedMs
+                    if (now - lastNotifMs >= 1_000L) {
+                        CaptureController.update {
+                            it.copy(
+                                state = CaptureController.State.PAUSED,
+                                elapsedMs = elapsedMs,
+                                recordingMs = recMs.coerceAtLeast(0),
+                            )
+                        }
+                        notify(buildNotification(recMs.coerceAtLeast(0), paused = true))
+                        lastNotifMs = now
+                    }
+                    continue
                 }
 
                 val pbResampled = if (pbRead > 0) {
@@ -362,17 +403,19 @@ class CaptureService : Service() {
                     val pdb = pbDb
                     val mdb = mcDb
                     val silent = playbackSilentLatched
+                    val recMs = elapsedMs - totalPausedMs
                     CaptureController.update {
                         it.copy(
                             state = CaptureController.State.RECORDING,
                             elapsedMs = elapsedMs,
+                            recordingMs = recMs.coerceAtLeast(0),
                             bytesWritten = bytes,
                             playbackRmsDbfs = pdb,
                             micRmsDbfs = mdb,
                             playbackSilent = silent,
                         )
                     }
-                    notify(buildNotification(elapsedMs))
+                    notify(buildNotification(recMs.coerceAtLeast(0)))
                     lastNotifMs = now
                 }
             }
@@ -437,7 +480,7 @@ class CaptureService : Service() {
 
     // ─────────────────────────────────────────────────────────────────
 
-    private fun buildNotification(elapsedMs: Long): Notification {
+    private fun buildNotification(elapsedMs: Long, paused: Boolean = false): Notification {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -449,15 +492,25 @@ class CaptureService : Service() {
             this, 1, stopIntent(this),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val text = if (elapsedMs <= 0) "Starting…" else formatElapsed(elapsedMs)
+        val pausePi = PendingIntent.getService(
+            this, 2,
+            Intent(this, CaptureService::class.java).apply { action = ACTION_TOGGLE_PAUSE },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val title = if (paused) "Vezir — paused" else "Vezir is recording"
+        val text = if (elapsedMs <= 0) "Starting…"
+            else if (paused) "${formatElapsed(elapsedMs)} (paused)"
+            else formatElapsed(elapsedMs)
+        val pauseLabel = if (paused) "Resume" else "Pause"
         return NotificationCompat.Builder(this, NOTIF_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Vezir is recording")
+            .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(launchPi)
+            .addAction(0, pauseLabel, pausePi)
             .addAction(0, "Stop", stopPi)
             .build()
     }
