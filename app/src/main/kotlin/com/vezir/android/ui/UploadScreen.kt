@@ -30,6 +30,7 @@ fun UploadScreen(
     contentUri: Uri,
     fileName: String,
     title: String?,
+    summaryPreset: String?,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -48,6 +49,7 @@ fun UploadScreen(
                 contentUri = contentUri,
                 fileName = fileName,
                 title = title,
+                summaryPreset = summaryPreset,
             )
         }
     }
@@ -71,6 +73,14 @@ fun UploadScreen(
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (!summaryPreset.isNullOrBlank()) {
+            Text(
+                "preset $summaryPreset",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         // Hero progress block.
         Column(

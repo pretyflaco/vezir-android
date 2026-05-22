@@ -60,6 +60,7 @@ object UploadController {
         contentUri: Uri,
         fileName: String,
         title: String?,
+        summaryPreset: String? = null,
     ) {
         job?.cancel()
         _state.value = Snapshot(state = State.UPLOADING)
@@ -69,6 +70,7 @@ object UploadController {
                 contentUri = contentUri,
                 fileName = fileName,
                 title = title,
+                summaryPreset = summaryPreset,
                 progress = { sent, total ->
                     _state.value = _state.value.copy(
                         state = State.UPLOADING,

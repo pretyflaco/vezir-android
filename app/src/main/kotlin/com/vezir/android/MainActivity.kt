@@ -57,7 +57,12 @@ private sealed class Screen {
     object QrScan : Screen()
     object Record : Screen()
     object Import : Screen()
-    data class Upload(val uri: Uri, val fileName: String, val title: String?) : Screen()
+    data class Upload(
+        val uri: Uri,
+        val fileName: String,
+        val title: String?,
+        val summaryPreset: String?,
+    ) : Screen()
 }
 
 @Composable
@@ -94,18 +99,24 @@ private fun AppRoot() {
                 prefs.clear()
                 screen = Screen.Setup
             },
-            onUpload = { uri, name, title -> screen = Screen.Upload(uri, name, title) },
+            onUpload = { uri, name, title, preset ->
+                screen = Screen.Upload(uri, name, title, preset)
+            },
             onImport = { screen = Screen.Import },
         )
         Screen.Import -> ImportScreen(
             onCancel = { screen = Screen.Record },
-            onImported = { uri, name -> screen = Screen.Upload(uri, name, null) },
+            // Imports re-use the user's stickied preset (matches Record flow).
+            onImported = { uri, name ->
+                screen = Screen.Upload(uri, name, null, prefs.summaryPreset)
+            },
         )
         is Screen.Upload -> UploadScreen(
             prefs = prefs,
             contentUri = s.uri,
             fileName = s.fileName,
             title = s.title,
+            summaryPreset = s.summaryPreset,
             onDismiss = { screen = Screen.Record },
         )
     }

@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -57,17 +61,32 @@ import com.vezir.android.data.Prefs
  *   - Secondary actions (Import / Sign out / Share / Upload) collapsed
  *     into a discrete bottom row of TextButtons or OutlinedButtons.
  */
+@Suppress("DEPRECATION")  // see menuAnchor() note below
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordScreen(
     prefs: Prefs,
     onSignOut: () -> Unit,
-    onUpload: (uri: android.net.Uri, fileName: String, title: String?) -> Unit,
+    onUpload: (
+        uri: android.net.Uri,
+        fileName: String,
+        title: String?,
+        summaryPreset: String?,
+    ) -> Unit,
     onImport: () -> Unit,
 ) {
     val context = LocalContext.current
     val snapshot by CaptureController.state.collectAsState()
 
     var title by remember { mutableStateOf("") }
+    // Preset id sent to the server with the upload.  Defaults to whatever
+    // is sticky in Prefs (which itself defaults to "confidential" on a
+    // fresh install — see Prefs.DEFAULT_PRESET).  Mutations are persisted
+    // immediately so the next launch remembers the last-used preset.
+    var preset by remember {
+        mutableStateOf(prefs.summaryPreset ?: Prefs.DEFAULT_PRESET)
+    }
+    var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
 
@@ -125,6 +144,51 @@ fun RecordScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = idleish,
         )
+
+        // Summarization preset dropdown.  Choice is persisted to Prefs so
+        // it sticks across launches; default on first install is the
+        // Confidential (Tinfoil TEE) backend per project policy.
+        ExposedDropdownMenuBox(
+            expanded = presetMenuOpen,
+            onExpandedChange = { if (idleish) presetMenuOpen = !presetMenuOpen },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = presetLabelFor(preset),
+                onValueChange = { /* read-only */ },
+                readOnly = true,
+                singleLine = true,
+                enabled = idleish,
+                label = { Text("Summarization preset") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetMenuOpen)
+                },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                // NOTE: .menuAnchor() is deprecated in Material3 1.4+ in
+                // favor of an overload that takes ExposedDropdownMenuAnchorType
+                // + enabled.  We're on 1.3.x (Compose BOM 2024.11) which
+                // doesn't expose the new overload yet; suppress at the
+                // function level until the next BOM bump.
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
+                expanded = presetMenuOpen,
+                onDismissRequest = { presetMenuOpen = false },
+            ) {
+                PRESET_OPTIONS.forEach { (id, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            preset = id
+                            prefs.summaryPreset = id
+                            presetMenuOpen = false
+                        },
+                    )
+                }
+            }
+        }
 
         // Hero status block.
         Column(
@@ -222,7 +286,7 @@ fun RecordScreen(
             Button(
                 onClick = {
                     if (finishedUri != null) {
-                        onUpload(finishedUri, finishedName, finishedTitle)
+                        onUpload(finishedUri, finishedName, finishedTitle, preset)
                     }
                 },
                 enabled = finishedUri != null,
@@ -314,6 +378,19 @@ private fun startFlow(
     if (needed.isEmpty()) andThen()
     else launchPermissions(needed.toTypedArray())
 }
+
+// Preset ids must match the server's accepted values (high-quality,
+// confidential, alternative — see vezir/cli.py and meet/summarize.py
+// SUMMARY_PRESETS).  Labels mirror the desktop GTK/Tkinter dropdowns
+// for cross-platform consistency.
+private val PRESET_OPTIONS: List<Pair<String, String>> = listOf(
+    "high-quality" to "High Quality \u2014 Sonnet 4.6",
+    "confidential" to "Confidential \u2014 DeepSeek V4 Pro (TEE)",
+    "alternative" to "Alternative \u2014 Kimi K2.6",
+)
+
+private fun presetLabelFor(id: String): String =
+    PRESET_OPTIONS.firstOrNull { it.first == id }?.second ?: id
 
 private fun formatHmsMillis(ms: Long): String {
     val totalSec = ms / 1000

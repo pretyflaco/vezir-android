@@ -46,6 +46,25 @@ class Prefs(context: Context) {
             }.apply()
         }
 
+    /**
+     * Summarization preset id sent with the next upload.
+     *
+     * Valid values: `"high-quality"`, `"confidential"`, `"alternative"`.
+     * Default on Android (returned when unset) is `"confidential"` so a
+     * fresh install opts into the TEE-backed pipeline by default; the user
+     * can override and the new choice sticks across launches.
+     *
+     * Setting to `null` or empty resets to the default on next read.
+     */
+    var summaryPreset: String?
+        get() = prefs.getString(KEY_SUMMARY_PRESET, null) ?: DEFAULT_PRESET
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_SUMMARY_PRESET)
+                else putString(KEY_SUMMARY_PRESET, value)
+            }.apply()
+        }
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -58,5 +77,7 @@ class Prefs(context: Context) {
         const val FILE_NAME = "vezir_secure_prefs"
         private const val KEY_URL = "vezir_url"
         private const val KEY_TOKEN = "vezir_token"
+        private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
+        const val DEFAULT_PRESET = "confidential"
     }
 }

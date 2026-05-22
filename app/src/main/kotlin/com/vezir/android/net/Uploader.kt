@@ -75,6 +75,11 @@ class Uploader(
      * @param contentUri MediaStore or file:// URI of the OGG to send
      * @param fileName display name for the multipart filename field
      * @param title optional meeting title (server forwards to the queue)
+     * @param summaryPreset optional summarization preset id; one of
+     *        "high-quality", "confidential", "alternative".  When set, the
+     *        server runs the matching backend (claudemax / Tinfoil TEE /
+     *        OpenRouter) and refuses to silently fall back.  When null the
+     *        server uses its configured default backend.
      * @param maxAttempts total tries including the first
      * @param progress progress callback fired ~every chunk
      * @param onRetry callback fired before each retry sleep
@@ -83,6 +88,7 @@ class Uploader(
         contentUri: Uri,
         fileName: String,
         title: String?,
+        summaryPreset: String? = null,
         maxAttempts: Int = 3,
         progress: Progress = Progress { _, _ -> },
         onRetry: OnRetry = OnRetry { _, _, _ -> },
@@ -93,7 +99,7 @@ class Uploader(
         var lastCause: Throwable? = null
         for (attempt in 1..maxAttempts) {
             try {
-                val body = buildBody(contentUri, fileName, title, totalBytes, progress)
+                val body = buildBody(contentUri, fileName, title, summaryPreset, totalBytes, progress)
                 val request = Request.Builder()
                     .url(url)
                     .header("Authorization", "Bearer $token")
@@ -144,6 +150,7 @@ class Uploader(
         contentUri: Uri,
         fileName: String,
         title: String?,
+        summaryPreset: String?,
         totalBytes: Long,
         progress: Progress,
     ): RequestBody {
@@ -153,6 +160,11 @@ class Uploader(
             .addFormDataPart("audio", fileName, fileBody)
         if (!title.isNullOrBlank()) {
             builder.addFormDataPart("title", title)
+        }
+        if (!summaryPreset.isNullOrBlank()) {
+            // Server form-field name is `summary_preset` (matches the
+            // FastAPI Form parameter in vezir/server/uploads.py).
+            builder.addFormDataPart("summary_preset", summaryPreset)
         }
         return builder.build()
     }
