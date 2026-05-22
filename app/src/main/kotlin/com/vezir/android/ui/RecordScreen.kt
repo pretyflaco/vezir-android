@@ -94,6 +94,8 @@ fun RecordScreen(
     // user opts out via Switches below the preset dropdown).
     var autoLabel by remember { mutableStateOf(prefs.autoLabel) }
     var sync by remember { mutableStateOf(prefs.sync) }
+    var personal by remember { mutableStateOf(prefs.personal) }
+    var autoDelete by remember { mutableStateOf(prefs.autoDeleteAfterUpload) }
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -232,10 +234,48 @@ fun RecordScreen(
                 modifier = Modifier.weight(1f),
             )
             Switch(
-                checked = sync,
+                checked = sync && !personal,  // personal forces sync off
                 onCheckedChange = {
                     sync = it
                     prefs.sync = it
+                },
+                enabled = idleish && !personal,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Personal recording",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(
+                checked = personal,
+                onCheckedChange = {
+                    personal = it
+                    prefs.personal = it
+                },
+                enabled = idleish,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Auto-delete after upload",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(
+                checked = autoDelete,
+                onCheckedChange = {
+                    autoDelete = it
+                    prefs.autoDeleteAfterUpload = it
                 },
                 enabled = idleish,
             )

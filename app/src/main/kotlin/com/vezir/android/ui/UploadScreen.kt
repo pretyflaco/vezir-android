@@ -33,8 +33,10 @@ fun UploadScreen(
     summaryPreset: String?,
     autoLabel: Boolean,
     sync: Boolean,
+    personal: Boolean = false,
     onDismiss: () -> Unit,
     onLabel: ((String) -> Unit)? = null,
+    onSessionDetail: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snapshot by UploadController.state.collectAsState()
@@ -55,8 +57,20 @@ fun UploadScreen(
                 summaryPreset = summaryPreset,
                 autoLabel = autoLabel,
                 sync = sync,
+                personal = personal,
                 caPem = prefs.caPem,
             )
+        }
+    }
+
+    // Auto-delete the local recording when upload + processing succeeds.
+    LaunchedEffect(snapshot.state, snapshot.serverStatus) {
+        if (snapshot.state == UploadController.State.DONE &&
+            snapshot.serverStatus == "done" &&
+            prefs.autoDeleteAfterUpload) {
+            try {
+                context.contentResolver.delete(contentUri, null, null)
+            } catch (_: Exception) {}
         }
     }
 
@@ -163,9 +177,21 @@ fun UploadScreen(
             ) { Text("Label speakers") }
         }
 
+        // View session detail (native) — available once we have a session ID.
+        if (snapshot.sessionId != null && onSessionDetail != null &&
+            snapshot.state != UploadController.State.UPLOADING) {
+            OutlinedButton(
+                onClick = {
+                    UploadController.reset()
+                    onSessionDetail(snapshot.sessionId!!)
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("View session") }
+        }
+
+        // Open in browser fallback.
         if (snapshot.dashboardLoginUrl != null &&
-            (snapshot.state == UploadController.State.POLLING ||
-                snapshot.state == UploadController.State.DONE)) {
+            snapshot.state != UploadController.State.UPLOADING) {
             OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW,
@@ -173,7 +199,7 @@ fun UploadScreen(
                     context.startActivity(intent)
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-            ) { Text("Open in dashboard") }
+            ) { Text("Open in browser") }
         }
 
         OutlinedButton(

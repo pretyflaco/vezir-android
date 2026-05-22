@@ -101,6 +101,7 @@ class Uploader(
         summaryPreset: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
+        personal: Boolean = false,
         maxAttempts: Int = 3,
         progress: Progress = Progress { _, _ -> },
         onRetry: OnRetry = OnRetry { _, _, _ -> },
@@ -113,7 +114,7 @@ class Uploader(
             try {
                 val body = buildBody(
                     contentUri, fileName, title, summaryPreset,
-                    autoLabel, sync, totalBytes, progress,
+                    autoLabel, sync, personal, totalBytes, progress,
                 )
                 val request = Request.Builder()
                     .url(url)
@@ -168,6 +169,7 @@ class Uploader(
         summaryPreset: String?,
         autoLabel: Boolean,
         sync: Boolean,
+        personal: Boolean,
         totalBytes: Long,
         progress: Progress,
     ): RequestBody {
@@ -190,6 +192,7 @@ class Uploader(
         // server support.
         builder.addFormDataPart("auto_label", if (autoLabel) "true" else "false")
         builder.addFormDataPart("sync", if (sync) "true" else "false")
+        builder.addFormDataPart("personal", if (personal) "true" else "false")
         return builder.build()
     }
 

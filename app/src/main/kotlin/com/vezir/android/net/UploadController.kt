@@ -63,6 +63,7 @@ object UploadController {
         summaryPreset: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
+        personal: Boolean = false,
         caPem: String? = null,
     ) {
         job?.cancel()
@@ -76,6 +77,7 @@ object UploadController {
                 summaryPreset = summaryPreset,
                 autoLabel = autoLabel,
                 sync = sync,
+                personal = personal,
                 progress = { sent, total ->
                     _state.value = _state.value.copy(
                         state = State.UPLOADING,

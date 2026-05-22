@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for sharing artifacts (PDF, txt, etc.) via
+     Intent.ACTION_SEND and Intent.ACTION_VIEW. -->
+<paths>
+    <cache-path name="cache" path="." />
+</paths>

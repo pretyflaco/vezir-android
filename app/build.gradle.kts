@@ -27,8 +27,8 @@ android {
         // inspection notes in vezir_plan.md).
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 10
+        versionName = "0.2.0"
 
         // Hard cap on recording duration. v1 = 3 hours, per plan §18.
         // Capture service reads this from BuildConfig at runtime.
@@ -129,6 +129,9 @@ dependencies {
 
     // Coroutines.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // WorkManager for background periodic tasks (labeling notification).
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // CameraX + ML Kit (M5: QR enrollment).
     // CameraX gives us a Compose-friendly preview + frame analyser.

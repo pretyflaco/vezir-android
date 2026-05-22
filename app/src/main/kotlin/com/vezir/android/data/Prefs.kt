@@ -94,6 +94,26 @@ class Prefs(context: Context) {
         }
 
     /**
+     * Personal recording toggle. When true, the session is hidden from
+     * other team members and sync is forced off. Default false (team-visible).
+     */
+    var personal: Boolean
+        get() = prefs.getBoolean(KEY_PERSONAL, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_PERSONAL, value).apply()
+        }
+
+    /**
+     * Auto-delete the local recording after a successful upload.
+     * Default false (keep recordings on device).
+     */
+    var autoDeleteAfterUpload: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_DELETE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_AUTO_DELETE, value).apply()
+        }
+
+    /**
      * PEM-encoded CA certificate from a v2 enrollment QR payload.
      *
      * When present, OkHttp trusts this CA alongside the system CAs so
@@ -122,6 +142,8 @@ class Prefs(context: Context) {
         private const val KEY_URL = "vezir_url"
         private const val KEY_TOKEN = "vezir_token"
         private const val KEY_CA_PEM = "vezir_ca_pem"
+        private const val KEY_PERSONAL = "vezir_personal"
+        private const val KEY_AUTO_DELETE = "vezir_auto_delete"
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
