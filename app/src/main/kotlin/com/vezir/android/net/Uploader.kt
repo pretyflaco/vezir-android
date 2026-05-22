@@ -35,6 +35,7 @@ class Uploader(
     private val baseUrl: String,
     private val token: String,
     private val contentResolver: ContentResolver,
+    caPem: String? = null,
 ) {
     companion object {
         private const val TAG = "VezirUploader"
@@ -62,14 +63,15 @@ class Uploader(
     /** Per-retry callback: attempt index (1..max), max, and the cause. */
     fun interface OnRetry { fun onRetry(attempt: Int, max: Int, cause: Throwable) }
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        // Long readTimeout so we don't kill an upload mid-flight on a
-        // sluggish Tailscale path; 30 minutes covers a 3h recording at
-        // any reasonable network speed.
-        .readTimeout(30, TimeUnit.MINUTES)
-        .writeTimeout(30, TimeUnit.MINUTES)
-        .build()
+    private val client: OkHttpClient =
+        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
+            .connectTimeout(30, TimeUnit.SECONDS)
+            // Long readTimeout so we don't kill an upload mid-flight on a
+            // sluggish Tailscale path; 30 minutes covers a 3h recording at
+            // any reasonable network speed.
+            .readTimeout(30, TimeUnit.MINUTES)
+            .writeTimeout(30, TimeUnit.MINUTES)
+            .build()
 
     /**
      * @param contentUri MediaStore or file:// URI of the OGG to send

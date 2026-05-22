@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 class SessionPoller(
     private val baseUrl: String,
     private val token: String,
+    caPem: String? = null,
     private val intervalMs: Long = 5_000L,
 ) {
     companion object {
@@ -45,10 +46,11 @@ class SessionPoller(
         val isTerminal: Boolean get() = status in TERMINAL
     }
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient =
+        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
 
     /** Cold flow that emits status updates until terminal, then completes. */
     fun poll(sessionId: String): Flow<SessionStatus> = flow {

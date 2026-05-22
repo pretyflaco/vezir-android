@@ -54,6 +54,7 @@ fun UploadScreen(
                 summaryPreset = summaryPreset,
                 autoLabel = autoLabel,
                 sync = sync,
+                caPem = prefs.caPem,
             )
         }
     }

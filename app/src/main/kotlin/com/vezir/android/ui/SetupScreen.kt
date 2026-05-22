@@ -52,6 +52,7 @@ fun SetupScreen(
 
     var url by remember { mutableStateOf(prefs.serverUrl ?: "") }
     var token by remember { mutableStateOf(prefs.token ?: "") }
+    var caPem by remember { mutableStateOf(prefs.caPem) }
     var qrJson by remember { mutableStateOf("") }
     var showManual by remember { mutableStateOf(prefs.serverUrl != null) }
 
@@ -61,6 +62,7 @@ fun SetupScreen(
     LaunchedEffect(Unit) {
         prefs.serverUrl?.let { url = it }
         prefs.token?.let { token = it }
+        caPem = prefs.caPem
     }
 
     ScreenScaffold {
@@ -125,7 +127,9 @@ fun SetupScreen(
                     } else {
                         url = parsed.url
                         token = parsed.token
-                        status = "Loaded URL and token from JSON."
+                        caPem = parsed.ca_pem
+                        val extra = if (parsed.ca_pem != null) " (includes CA cert)" else ""
+                        status = "Loaded URL and token from JSON$extra."
                     }
                 },
                 enabled = qrJson.isNotBlank() && !busy,
@@ -141,7 +145,7 @@ fun SetupScreen(
                         scope.launch {
                             busy = true
                             status = "Pinging /health..."
-                            val res = VezirApi(url, null).health()
+                            val res = VezirApi(url, null, caPem).health()
                             status = when (res) {
                                 VezirApi.Result.Ok ->
                                     "Server reachable."
@@ -162,7 +166,7 @@ fun SetupScreen(
                         scope.launch {
                             busy = true
                             status = "Validating token via /api/sessions..."
-                            val res = VezirApi(url, token).checkToken()
+                            val res = VezirApi(url, token, caPem).checkToken()
                             status = when (res) {
                                 VezirApi.Result.Ok ->
                                     "Token accepted."
@@ -184,6 +188,7 @@ fun SetupScreen(
             onClick = {
                 prefs.serverUrl = url
                 prefs.token = token
+                prefs.caPem = caPem
                 status = "Saved."
                 onConfigured()
             },

@@ -18,12 +18,16 @@ import java.util.concurrent.TimeUnit
  *
  * Upload, status polling, and dashboard handoff are M3.
  */
-class VezirApi(private val baseUrl: String, private val token: String?) {
-
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+class VezirApi(
+    private val baseUrl: String,
+    private val token: String?,
+    caPem: String? = null,
+) {
+    private val client: OkHttpClient =
+        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
 
     sealed class Result {
         object Ok : Result()

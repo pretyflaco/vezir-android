@@ -63,11 +63,12 @@ object UploadController {
         summaryPreset: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
+        caPem: String? = null,
     ) {
         job?.cancel()
         _state.value = Snapshot(state = State.UPLOADING)
         job = scope.launch {
-            val uploader = Uploader(baseUrl, token, contentResolver)
+            val uploader = Uploader(baseUrl, token, contentResolver, caPem)
             val outcome = uploader.upload(
                 contentUri = contentUri,
                 fileName = fileName,
@@ -100,7 +101,7 @@ object UploadController {
                         dashboardUrl = outcome.response.dashboard_url,
                         dashboardLoginUrl = outcome.response.dashboard_login_url,
                     )
-                    pollForStatus(baseUrl, token, outcome.response.session_id)
+                    pollForStatus(baseUrl, token, outcome.response.session_id, caPem)
                 }
                 is Uploader.Outcome.HttpError -> {
                     _state.value = _state.value.copy(
@@ -118,8 +119,10 @@ object UploadController {
         }
     }
 
-    private suspend fun pollForStatus(baseUrl: String, token: String, sessionId: String) {
-        val poller = SessionPoller(baseUrl, token)
+    private suspend fun pollForStatus(
+        baseUrl: String, token: String, sessionId: String, caPem: String? = null,
+    ) {
+        val poller = SessionPoller(baseUrl, token, caPem)
         poller.poll(sessionId).collect { status ->
             val terminal = status.status == "done" || status.status == "error"
             _state.value = _state.value.copy(
