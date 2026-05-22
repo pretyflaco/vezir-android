@@ -19,7 +19,7 @@ your meetings repo.
 
 ## Status
 
-Alpha (0.1.2). Sideload only; no Play Store. End-to-end validated
+Alpha (0.1.3). Sideload only; no Play Store. End-to-end validated
 against a Blink dev-sync sandbox session: phone records a Google Meet
 meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
 at 16 kHz mono / 24 kbps, uploads to a Vezir server over Tailscale, and
@@ -58,7 +58,7 @@ the server's worker produces a usable transcript + summary.
 The signed APK is published with each GitHub Release. Sideload it.
 
 ```bash
-adb install -r vezir-android-0.1.2.apk
+adb install -r vezir-android-0.1.3.apk
 ```
 
 Or open the APK in your phone's file manager and let Android install it from "unknown sources".
