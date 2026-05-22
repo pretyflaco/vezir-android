@@ -19,7 +19,7 @@ your meetings repo.
 
 ## Status
 
-Alpha (0.1.0). Sideload only; no Play Store. End-to-end validated
+Alpha (0.1.2). Sideload only; no Play Store. End-to-end validated
 against a Blink dev-sync sandbox session: phone records a Google Meet
 meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
 at 16 kHz mono / 24 kbps, uploads to a Vezir server over Tailscale, and
@@ -33,6 +33,7 @@ the server's worker produces a usable transcript + summary.
 | Record meeting audio | Tap **Start recording**. Android shows the `MediaProjection` consent prompt. The app captures system playback (apps using `USAGE_MEDIA`/`USAGE_GAME`/`USAGE_UNKNOWN`) + microphone, mixes them with soft-clip, and encodes Opus. |
 | Stop | Tap **Stop**, or use the persistent notification's Stop action. 3h hard cap. |
 | Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg` — visible in every file manager and audio app. |
+| Pick summarization preset | Dropdown above the record button. Three options — **High Quality** (Sonnet 4.6), **Confidential** (DeepSeek V4 Pro via Tinfoil TEE, default on Android), **Alternative** (Kimi K2.6). Choice sticks across launches; sent to the server as the multipart form field `summary_preset`. |
 | Upload | Tap **Upload to vezir**. OkHttp multipart `POST /upload` with progress, retries on connection / 5xx, restart-from-byte-0 on retry. Polls `/api/sessions/{id}` until terminal. |
 | Open dashboard | One-tap to the existing browser dashboard via `/login?token=...&next=/s/<id>`. |
 | Import existing recording | SAF picker → `MediaExtractor` → `MediaCodec` decode → resample → Opus. Samsung screen-recording MP4s, voice memos, prior Vezir OGGs all work. OGG inputs are stream-copied without re-encode. |
@@ -57,7 +58,7 @@ the server's worker produces a usable transcript + summary.
 The signed APK is published with each GitHub Release. Sideload it.
 
 ```bash
-adb install -r vezir-android-0.1.0.apk
+adb install -r vezir-android-0.1.2.apk
 ```
 
 Or open the APK in your phone's file manager and let Android install it from "unknown sources".
