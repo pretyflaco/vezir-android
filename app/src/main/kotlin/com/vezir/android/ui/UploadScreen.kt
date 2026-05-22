@@ -31,6 +31,8 @@ fun UploadScreen(
     fileName: String,
     title: String?,
     summaryPreset: String?,
+    autoLabel: Boolean,
+    sync: Boolean,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -50,6 +52,8 @@ fun UploadScreen(
                 fileName = fileName,
                 title = title,
                 summaryPreset = summaryPreset,
+                autoLabel = autoLabel,
+                sync = sync,
             )
         }
     }
@@ -81,6 +85,12 @@ fun UploadScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Text(
+            "auto-label=$autoLabel  sync=$sync",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         // Hero progress block.
         Column(

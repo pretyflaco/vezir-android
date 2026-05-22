@@ -65,6 +65,34 @@ class Prefs(context: Context) {
             }.apply()
         }
 
+    /**
+     * Whether the next upload should request server-side auto-labeling
+     * against the central voiceprint DB.  When false the server skips
+     * `meet label --auto` entirely and routes the session straight to
+     * the manual labeling page.  Default true preserves existing
+     * behavior; the user can opt out via the Record screen Switch and
+     * the choice sticks across launches.
+     */
+    var autoLabel: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_LABEL, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_AUTO_LABEL, value).apply()
+        }
+
+    /**
+     * Whether the next upload should be synced to the server's
+     * configured destination git repo after the pipeline completes.
+     * When false the session reaches `done (local-only)` on the
+     * dashboard with no git push; the user can later trigger a
+     * retroactive sync via the dashboard's "Sync now" button.  Default
+     * true preserves existing behavior.
+     */
+    var sync: Boolean
+        get() = prefs.getBoolean(KEY_SYNC, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SYNC, value).apply()
+        }
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -78,6 +106,8 @@ class Prefs(context: Context) {
         private const val KEY_URL = "vezir_url"
         private const val KEY_TOKEN = "vezir_token"
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
+        private const val KEY_AUTO_LABEL = "vezir_auto_label"
+        private const val KEY_SYNC = "vezir_sync"
         const val DEFAULT_PRESET = "confidential"
     }
 }

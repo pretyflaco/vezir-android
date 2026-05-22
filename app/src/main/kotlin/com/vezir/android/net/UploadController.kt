@@ -61,6 +61,8 @@ object UploadController {
         fileName: String,
         title: String?,
         summaryPreset: String? = null,
+        autoLabel: Boolean = true,
+        sync: Boolean = true,
     ) {
         job?.cancel()
         _state.value = Snapshot(state = State.UPLOADING)
@@ -71,6 +73,8 @@ object UploadController {
                 fileName = fileName,
                 title = title,
                 summaryPreset = summaryPreset,
+                autoLabel = autoLabel,
+                sync = sync,
                 progress = { sent, total ->
                     _state.value = _state.value.copy(
                         state = State.UPLOADING,

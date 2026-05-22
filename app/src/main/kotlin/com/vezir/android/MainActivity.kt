@@ -62,6 +62,8 @@ private sealed class Screen {
         val fileName: String,
         val title: String?,
         val summaryPreset: String?,
+        val autoLabel: Boolean,
+        val sync: Boolean,
     ) : Screen()
 }
 
@@ -99,16 +101,20 @@ private fun AppRoot() {
                 prefs.clear()
                 screen = Screen.Setup
             },
-            onUpload = { uri, name, title, preset ->
-                screen = Screen.Upload(uri, name, title, preset)
+            onUpload = { uri, name, title, preset, autoLabel, sync ->
+                screen = Screen.Upload(uri, name, title, preset, autoLabel, sync)
             },
             onImport = { screen = Screen.Import },
         )
         Screen.Import -> ImportScreen(
             onCancel = { screen = Screen.Record },
-            // Imports re-use the user's stickied preset (matches Record flow).
+            // Imports re-use the user's stickied preset + toggles
+            // (matches Record flow).
             onImported = { uri, name ->
-                screen = Screen.Upload(uri, name, null, prefs.summaryPreset)
+                screen = Screen.Upload(
+                    uri, name, null,
+                    prefs.summaryPreset, prefs.autoLabel, prefs.sync,
+                )
             },
         )
         is Screen.Upload -> UploadScreen(
@@ -117,6 +123,8 @@ private fun AppRoot() {
             fileName = s.fileName,
             title = s.title,
             summaryPreset = s.summaryPreset,
+            autoLabel = s.autoLabel,
+            sync = s.sync,
             onDismiss = { screen = Screen.Record },
         )
     }

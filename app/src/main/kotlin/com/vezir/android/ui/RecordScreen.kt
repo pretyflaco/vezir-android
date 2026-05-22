@@ -27,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +73,8 @@ fun RecordScreen(
         fileName: String,
         title: String?,
         summaryPreset: String?,
+        autoLabel: Boolean,
+        sync: Boolean,
     ) -> Unit,
     onImport: () -> Unit,
 ) {
@@ -86,6 +89,11 @@ fun RecordScreen(
     var preset by remember {
         mutableStateOf(prefs.summaryPreset ?: Prefs.DEFAULT_PRESET)
     }
+    // Per-upload privacy toggles, both sticky across launches.
+    // Defaults: auto-label ON, sync ON (matches server defaults; the
+    // user opts out via Switches below the preset dropdown).
+    var autoLabel by remember { mutableStateOf(prefs.autoLabel) }
+    var sync by remember { mutableStateOf(prefs.sync) }
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -190,6 +198,47 @@ fun RecordScreen(
             }
         }
 
+        // Per-upload privacy toggles.  Both default ON; flipping persists
+        // immediately to EncryptedSharedPreferences so the next launch
+        // remembers the choice.  Disabled while not idle so a recording
+        // in flight always uses the toggle state captured at start.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Auto-label speakers",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = autoLabel,
+                onCheckedChange = {
+                    autoLabel = it
+                    prefs.autoLabel = it
+                },
+                enabled = idleish,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Sync to git",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = sync,
+                onCheckedChange = {
+                    sync = it
+                    prefs.sync = it
+                },
+                enabled = idleish,
+            )
+        }
+
         // Hero status block.
         Column(
             modifier = Modifier
@@ -286,7 +335,10 @@ fun RecordScreen(
             Button(
                 onClick = {
                     if (finishedUri != null) {
-                        onUpload(finishedUri, finishedName, finishedTitle, preset)
+                        onUpload(
+                            finishedUri, finishedName, finishedTitle,
+                            preset, autoLabel, sync,
+                        )
                     }
                 },
                 enabled = finishedUri != null,

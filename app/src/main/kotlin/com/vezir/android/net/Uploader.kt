@@ -80,6 +80,14 @@ class Uploader(
      *        server runs the matching backend (claudemax / Tinfoil TEE /
      *        OpenRouter) and refuses to silently fall back.  When null the
      *        server uses its configured default backend.
+     * @param autoLabel whether the server should run `meet label --auto`
+     *        against the central voiceprint DB.  When false the session
+     *        always goes through manual labeling.  Default true.
+     * @param sync whether the server should push the artifacts to the
+     *        configured destination repo after the pipeline completes.
+     *        When false the session reaches `done (local-only)` and the
+     *        user can trigger a retroactive sync from the dashboard.
+     *        Default true.
      * @param maxAttempts total tries including the first
      * @param progress progress callback fired ~every chunk
      * @param onRetry callback fired before each retry sleep
@@ -89,6 +97,8 @@ class Uploader(
         fileName: String,
         title: String?,
         summaryPreset: String? = null,
+        autoLabel: Boolean = true,
+        sync: Boolean = true,
         maxAttempts: Int = 3,
         progress: Progress = Progress { _, _ -> },
         onRetry: OnRetry = OnRetry { _, _, _ -> },
@@ -99,7 +109,10 @@ class Uploader(
         var lastCause: Throwable? = null
         for (attempt in 1..maxAttempts) {
             try {
-                val body = buildBody(contentUri, fileName, title, summaryPreset, totalBytes, progress)
+                val body = buildBody(
+                    contentUri, fileName, title, summaryPreset,
+                    autoLabel, sync, totalBytes, progress,
+                )
                 val request = Request.Builder()
                     .url(url)
                     .header("Authorization", "Bearer $token")
@@ -151,6 +164,8 @@ class Uploader(
         fileName: String,
         title: String?,
         summaryPreset: String?,
+        autoLabel: Boolean,
+        sync: Boolean,
         totalBytes: Long,
         progress: Progress,
     ): RequestBody {
@@ -166,6 +181,13 @@ class Uploader(
             // FastAPI Form parameter in vezir/server/uploads.py).
             builder.addFormDataPart("summary_preset", summaryPreset)
         }
+        // Always send the privacy toggles as string-encoded bools so the
+        // server's _parse_bool_form() reads them consistently across
+        // clients (httpx / OkHttp / curl).  Older servers ignore them
+        // and default to true; that's the intended behavior for missing
+        // server support.
+        builder.addFormDataPart("auto_label", if (autoLabel) "true" else "false")
+        builder.addFormDataPart("sync", if (sync) "true" else "false")
         return builder.build()
     }
 
