@@ -10,6 +10,9 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -445,22 +449,6 @@ fun RecordScreen(
         HorizontalDivider()
         Spacer(Modifier.height(4.dp))
 
-        // Secondary affordances row.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TextButton(
-                onClick = onImport,
-                enabled = idleish,
-                modifier = Modifier.weight(1f),
-            ) { Text("Import recording") }
-            TextButton(
-                onClick = onSignOut,
-                modifier = Modifier.weight(1f),
-            ) { Text("Sign out") }
-        }
-
         Text(
             "Max recording duration: %.1f h (hard stop)"
                 .format(BuildConfig.MAX_RECORDING_MILLIS / 3_600_000.0),
@@ -471,6 +459,42 @@ fun RecordScreen(
         if (permissionStatus != null) {
             MonoStatus(permissionStatus!!,
                 color = MaterialTheme.colorScheme.error)
+        }
+
+        // ── Actions overflow menu ──
+        var menuExpanded by remember { mutableStateOf(false) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            OutlinedButton(onClick = { menuExpanded = true }) {
+                Text("Actions")
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "Actions",
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Import recording") },
+                    enabled = idleish,
+                    onClick = {
+                        menuExpanded = false
+                        onImport()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Sign out") },
+                    onClick = {
+                        menuExpanded = false
+                        onSignOut()
+                    },
+                )
+            }
         }
     }
 }

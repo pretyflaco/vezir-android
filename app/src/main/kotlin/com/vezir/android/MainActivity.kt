@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -134,8 +135,7 @@ private fun AppRoot() {
             }
         },
     ) { innerPadding ->
-        val modifier = Modifier.padding(innerPadding)
-
+        Box(modifier = Modifier.padding(innerPadding)) {
         when (val s = currentScreen) {
             Screen.Splash -> SplashScreen(
                 onDone = {
@@ -230,6 +230,7 @@ private fun AppRoot() {
                 artifactName = s.artifactName,
                 onBack = { pop() },
             )
-        }
-    }
-}
+        } // when
+        } // Box
+    } // Scaffold
+} // AppRoot
