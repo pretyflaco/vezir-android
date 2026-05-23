@@ -43,6 +43,7 @@ class SessionPoller(
         val updated_at: String? = null,
         val error: String? = null,
         val summary_error: String? = null,
+        val sync_error: String? = null,
     ) {
         val isTerminal: Boolean get() = status in TERMINAL
     }

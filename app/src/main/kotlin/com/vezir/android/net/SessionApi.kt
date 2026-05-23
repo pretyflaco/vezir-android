@@ -47,6 +47,7 @@ class SessionApi(
         val updated_at: String? = null,
         val error: String? = null,
         val summary_error: String? = null,
+        val sync_error: String? = null,
         val artifacts: String? = null,
     ) {
         /** Parse the JSON-encoded artifacts string into a map. */

@@ -166,6 +166,13 @@ fun UploadScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            if (snapshot.syncError != null) {
+                MonoStatus(
+                    "sync failed (artifacts OK). " +
+                        "View session to retry.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             if (snapshot.errorMessage != null) {
                 MonoStatus(
                     "error: ${snapshot.errorMessage}",

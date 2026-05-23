@@ -32,6 +32,7 @@ object UploadController {
         val serverStatus: String? = null,         // queued | transcribing | needs_labeling | syncing | done | error
         val serverError: String? = null,
         val summaryError: String? = null,         // summary-only failure (transcript OK)
+        val syncError: String? = null,            // sync-only failure (artifacts OK)
         val errorMessage: String? = null,         // upload-side error
         val dashboardUrl: String? = null,
         val dashboardLoginUrl: String? = null,
@@ -133,6 +134,7 @@ object UploadController {
                 serverStatus = status.status,
                 serverError = status.error,
                 summaryError = status.summary_error,
+                syncError = status.sync_error,
             )
         }
         // Flow completed on terminal status. If the loop exited without a

@@ -157,6 +157,14 @@ fun SessionDetailScreen(
             )
         }
 
+        if (s.sync_error != null) {
+            MonoStatus(
+                "sync failed: artifacts are on the server but not " +
+                    "pushed to git. Use 'Sync now' to retry.",
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         // Artifacts.
         val artifacts = s.artifactMap
         if (artifacts.isNotEmpty()) {
@@ -238,7 +246,7 @@ fun SessionDetailScreen(
             ) { Text("Share with team") }
         }
 
-        if (s.status == "done" && (s.sync_enabled ?: 1) == 0) {
+        if (s.status == "done" && ((s.sync_enabled ?: 1) == 0 || s.sync_error != null)) {
             OutlinedButton(
                 onClick = {
                     scope.launch {
