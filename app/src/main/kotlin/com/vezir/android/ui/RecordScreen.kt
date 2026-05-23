@@ -500,18 +500,9 @@ private fun startFlow(
     else launchPermissions(needed.toTypedArray())
 }
 
-// Preset ids must match the server's accepted values (high-quality,
-// confidential, alternative — see vezir/cli.py and meet/summarize.py
-// SUMMARY_PRESETS).  Labels mirror the desktop GTK/Tkinter dropdowns
-// for cross-platform consistency.
-private val PRESET_OPTIONS: List<Pair<String, String>> = listOf(
-    "high-quality" to "High Quality \u2014 Sonnet 4.6",
-    "confidential" to "Confidential \u2014 DeepSeek V4 Pro (TEE)",
-    "alternative" to "Alternative \u2014 Kimi K2.6",
-)
+private val PRESET_OPTIONS get() = Prefs.PRESET_OPTIONS
 
-private fun presetLabelFor(id: String): String =
-    PRESET_OPTIONS.firstOrNull { it.first == id }?.second ?: id
+private fun presetLabelFor(id: String): String = Prefs.presetLabelFor(id)
 
 private fun formatHmsMillis(ms: Long): String {
     val totalSec = ms / 1000

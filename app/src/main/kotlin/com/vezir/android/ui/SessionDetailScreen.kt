@@ -12,15 +12,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -203,70 +209,161 @@ fun SessionDetailScreen(
             }
         }
 
-        // Action buttons.
-        if (s.summary_error != null && s.status == "done") {
-            Button(
-                onClick = {
-                    scope.launch {
-                        actionBusy = true
-                        api.retrySummary(sessionId)
-                        refresh()
-                        actionBusy = false
-                    }
-                },
-                enabled = !actionBusy,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-            ) { Text("Retry summary") }
-        }
+        // ── Actions overflow menu ──
 
-        if (s.status in listOf("needs_labeling", "done", "error")) {
+        var menuExpanded by remember { mutableStateOf(false) }
+        var showRetrySummaryDialog by remember { mutableStateOf(false) }
+
+        // Primary action: Label speakers (prominent when needed).
+        if (s.status == "needs_labeling") {
             Button(
                 onClick = { onLabel(sessionId) },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Label speakers") }
+        }
+
+        // Retry summary dialog with preset picker.
+        if (showRetrySummaryDialog) {
+            var chosenPreset by remember {
+                mutableStateOf(s.summary_preset ?: Prefs.DEFAULT_PRESET)
+            }
+            AlertDialog(
+                onDismissRequest = { showRetrySummaryDialog = false },
+                title = { Text("Retry summary") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (s.summary_preset == "confidential" && chosenPreset != "confidential") {
+                            Text(
+                                "Switching from Confidential to ${Prefs.presetLabelFor(chosenPreset).substringBefore(" \u2014")} " +
+                                    "will send the transcript to a different provider.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Prefs.PRESET_OPTIONS.forEach { (id, label) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { chosenPreset = id }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                RadioButton(
+                                    selected = chosenPreset == id,
+                                    onClick = { chosenPreset = id },
+                                )
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showRetrySummaryDialog = false
+                            scope.launch {
+                                actionBusy = true
+                                api.retrySummary(sessionId, preset = chosenPreset)
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                        enabled = !actionBusy,
+                    ) { Text("Retry") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRetrySummaryDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
+        // Actions menu button.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            OutlinedButton(
+                onClick = { menuExpanded = true },
+                enabled = !actionBusy,
             ) {
-                Text(
-                    if (s.status == "needs_labeling") "Label speakers"
-                    else "Re-label speakers",
+                Text("Actions")
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "Actions",
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                if (s.summary_error != null && s.status == "done") {
+                    DropdownMenuItem(
+                        text = { Text("Retry summary\u2026") },
+                        onClick = {
+                            menuExpanded = false
+                            showRetrySummaryDialog = true
+                        },
+                    )
+                }
+                if (s.status in listOf("done", "error", "needs_labeling")) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (s.status == "needs_labeling") "Label speakers"
+                                else "Re-label speakers"
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onLabel(sessionId)
+                        },
+                    )
+                }
+                if (s.status == "done" &&
+                    ((s.sync_enabled ?: 1) == 0 || s.sync_error != null)) {
+                    DropdownMenuItem(
+                        text = { Text("Sync now") },
+                        onClick = {
+                            menuExpanded = false
+                            scope.launch {
+                                actionBusy = true
+                                api.syncNow(sessionId)
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                    )
+                }
+                if (s.isPersonal) {
+                    DropdownMenuItem(
+                        text = { Text("Share with team") },
+                        onClick = {
+                            menuExpanded = false
+                            scope.launch {
+                                actionBusy = true
+                                api.shareWithTeam(sessionId)
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Open in browser") },
+                    onClick = {
+                        menuExpanded = false
+                        val url = "${prefs.serverUrl?.trimEnd('/')}/s/$sessionId"
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    },
                 )
             }
         }
-
-        if (s.isPersonal) {
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        actionBusy = true
-                        api.shareWithTeam(sessionId)
-                        refresh()
-                        actionBusy = false
-                    }
-                },
-                enabled = !actionBusy,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Share with team") }
-        }
-
-        if (s.status == "done" && ((s.sync_enabled ?: 1) == 0 || s.sync_error != null)) {
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        actionBusy = true
-                        api.syncNow(sessionId)
-                        refresh()
-                        actionBusy = false
-                    }
-                },
-                enabled = !actionBusy,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sync now") }
-        }
-
-        OutlinedButton(
-            onClick = {
-                val url = "${prefs.serverUrl?.trimEnd('/')}/s/$sessionId"
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Open in browser") }
     }
 }

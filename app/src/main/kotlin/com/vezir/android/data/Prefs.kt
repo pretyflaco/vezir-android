@@ -150,5 +150,22 @@ class Prefs(context: Context) {
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
         const val DEFAULT_PRESET = "high-quality"
+
+        /**
+         * Preset ids and display labels. Shared by RecordScreen (upload
+         * dropdown) and SessionDetailScreen (retry-summary picker).
+         *
+         * Ids must match the server's accepted values (high-quality,
+         * confidential, alternative -- see vezir/cli.py and
+         * meet/summarize.py SUMMARY_PRESETS).
+         */
+        val PRESET_OPTIONS: List<Pair<String, String>> = listOf(
+            "high-quality" to "High Quality \u2014 Sonnet 4.6",
+            "confidential" to "Confidential \u2014 DeepSeek V4 Pro (TEE)",
+            "alternative" to "Alternative \u2014 Kimi K2.6",
+        )
+
+        fun presetLabelFor(id: String): String =
+            PRESET_OPTIONS.firstOrNull { it.first == id }?.second ?: id
     }
 }

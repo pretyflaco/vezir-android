@@ -139,12 +139,17 @@ class SessionApi(
             }
         }
 
-    suspend fun retrySummary(sessionId: String): Result<Boolean> =
+    suspend fun retrySummary(
+        sessionId: String,
+        preset: String? = null,
+    ): Result<Boolean> =
         withContext(Dispatchers.IO) {
+            val bodyJson = if (preset != null) """{"preset":"$preset"}""" else "{}"
+            val body = bodyJson.toRequestBody("application/json".toMediaType())
             val req = Request.Builder()
                 .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/retry-summary")
                 .header("Authorization", "Bearer $token")
-                .post(EMPTY_JSON)
+                .post(body)
                 .build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
