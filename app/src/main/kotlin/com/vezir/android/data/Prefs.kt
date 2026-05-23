@@ -50,8 +50,10 @@ class Prefs(context: Context) {
      * Summarization preset id sent with the next upload.
      *
      * Valid values: `"high-quality"`, `"confidential"`, `"alternative"`.
-     * Default on Android (returned when unset) is `"confidential"` so a
-     * fresh install opts into the TEE-backed pipeline by default; the user
+     * Default on Android (returned when unset) is `"high-quality"` which
+     * uses the Claude Max backend (Sonnet 4.6).  This is more reliable
+     * than the TEE-backed `"confidential"` preset which depends on the
+     * Tinfoil router being reachable at transcription time.  The user
      * can override and the new choice sticks across launches.
      *
      * Setting to `null` or empty resets to the default on next read.
@@ -147,6 +149,6 @@ class Prefs(context: Context) {
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
-        const val DEFAULT_PRESET = "confidential"
+        const val DEFAULT_PRESET = "high-quality"
     }
 }

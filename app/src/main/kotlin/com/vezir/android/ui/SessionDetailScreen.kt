@@ -148,6 +148,15 @@ fun SessionDetailScreen(
             )
         }
 
+        if (s.summary_error != null) {
+            MonoStatus(
+                "summary unavailable: transcription succeeded but the " +
+                    "summary backend was unreachable. Transcript artifacts " +
+                    "are available below.",
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         // Artifacts.
         val artifacts = s.artifactMap
         if (artifacts.isNotEmpty()) {
@@ -187,6 +196,21 @@ fun SessionDetailScreen(
         }
 
         // Action buttons.
+        if (s.summary_error != null && s.status == "done") {
+            Button(
+                onClick = {
+                    scope.launch {
+                        actionBusy = true
+                        api.retrySummary(sessionId)
+                        refresh()
+                        actionBusy = false
+                    }
+                },
+                enabled = !actionBusy,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Retry summary") }
+        }
+
         if (s.status in listOf("needs_labeling", "done", "error")) {
             Button(
                 onClick = { onLabel(sessionId) },

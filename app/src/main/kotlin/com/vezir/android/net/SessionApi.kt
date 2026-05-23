@@ -46,6 +46,7 @@ class SessionApi(
         val created_at: String? = null,
         val updated_at: String? = null,
         val error: String? = null,
+        val summary_error: String? = null,
         val artifacts: String? = null,
     ) {
         /** Parse the JSON-encoded artifacts string into a map. */
@@ -125,6 +126,23 @@ class SessionApi(
                 .url("${baseUrl.trimEnd('/')}/session/$sessionId/sync")
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/json")
+                .post(EMPTY_JSON)
+                .build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) Result.Ok(true)
+                    else Result.HttpError(resp.code, resp.message)
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
+
+    suspend fun retrySummary(sessionId: String): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/retry-summary")
+                .header("Authorization", "Bearer $token")
                 .post(EMPTY_JSON)
                 .build()
             runCatching {

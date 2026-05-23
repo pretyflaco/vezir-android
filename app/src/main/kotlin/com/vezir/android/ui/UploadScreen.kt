@@ -159,6 +159,13 @@ fun UploadScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            if (snapshot.summaryError != null) {
+                MonoStatus(
+                    "summary unavailable (transcript OK). " +
+                        "View session to retry.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             if (snapshot.errorMessage != null) {
                 MonoStatus(
                     "error: ${snapshot.errorMessage}",
