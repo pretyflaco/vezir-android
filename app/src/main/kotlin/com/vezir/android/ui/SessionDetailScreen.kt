@@ -55,7 +55,15 @@ fun SessionDetailScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val api = remember { SessionApi(prefs.serverUrl!!, prefs.token!!, prefs.caPem) }
+    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
+    val api = remember(cred) {
+        cred?.let { SessionApi(it.url, it.token, it.caPem) }
+    }
+
+    if (cred == null || api == null) {
+        onBack()
+        return
+    }
 
     var session by remember { mutableStateOf<SessionApi.Session?>(null) }
     var loading by remember { mutableStateOf(true) }

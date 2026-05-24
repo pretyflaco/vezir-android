@@ -42,11 +42,25 @@ fun SessionListScreen(
     onSessionClick: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val api = remember { SessionApi(prefs.serverUrl!!, prefs.token!!, prefs.caPem) }
+    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
+    val api = remember(cred) {
+        cred?.let { SessionApi(it.url, it.token, it.caPem) }
+    }
 
     var sessions by remember { mutableStateOf<List<SessionApi.Session>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    if (cred == null || api == null) {
+        Column(modifier = Modifier.fillMaxWidth().padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Not configured", style = MaterialTheme.typography.bodyLarge)
+            Text("Scan a QR code in the Settings tab to get started.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
 
     fun refresh() {
         scope.launch {
@@ -63,7 +77,7 @@ fun SessionListScreen(
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(cred) { refresh() }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(

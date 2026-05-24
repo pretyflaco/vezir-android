@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -41,15 +42,15 @@ fun UploadScreen(
     val context = LocalContext.current
     val snapshot by UploadController.state.collectAsState()
 
+    val cred = remember { prefs.activeCredential() }
+
     LaunchedEffect(contentUri, fileName) {
-        val url = prefs.serverUrl
-        val token = prefs.token
-        if (url.isNullOrBlank() || token.isNullOrBlank()) return@LaunchedEffect
+        val c = cred ?: return@LaunchedEffect
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
             UploadController.startUpload(
-                baseUrl = url,
-                token = token,
+                baseUrl = c.url,
+                token = c.token,
                 contentResolver = context.contentResolver,
                 contentUri = contentUri,
                 fileName = fileName,
@@ -58,7 +59,7 @@ fun UploadScreen(
                 autoLabel = autoLabel,
                 sync = sync,
                 personal = personal,
-                caPem = prefs.caPem,
+                caPem = c.caPem,
             )
         }
     }
@@ -88,7 +89,7 @@ fun UploadScreen(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            "to ${prefs.serverUrl ?: "(unset)"}",
+            "to ${cred?.url ?: "(unset)"}",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

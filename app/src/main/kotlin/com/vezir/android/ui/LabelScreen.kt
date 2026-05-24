@@ -68,12 +68,18 @@ fun LabelScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
 
-    val api = remember {
-        LabelApi(prefs.serverUrl!!, prefs.token!!, prefs.caPem)
+    if (cred == null) {
+        onCancel()
+        return
     }
-    val clipPlayer = remember {
-        AudioClipPlayer(prefs.token!!, prefs.caPem, context.cacheDir)
+
+    val api = remember(cred) {
+        LabelApi(cred.url, cred.token, cred.caPem)
+    }
+    val clipPlayer = remember(cred) {
+        AudioClipPlayer(cred.token, cred.caPem, context.cacheDir)
     }
 
     // Cleanup player on dispose.

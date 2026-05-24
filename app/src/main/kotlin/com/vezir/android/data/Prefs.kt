@@ -181,6 +181,36 @@ class Prefs(context: Context) {
     fun isConfigured(): Boolean =
         hasTeamCredentials() || hasLegacyCredentials()
 
+    /**
+     * Resolved credential for API calls.  Screens use this instead of
+     * reading `serverUrl` / `token` / `caPem` directly so both
+     * multi-team and legacy single-token paths are covered.
+     */
+    data class ActiveCredential(val url: String, val token: String, val caPem: String?)
+
+    /**
+     * Resolve the active credential.
+     *
+     * Precedence:
+     *   1. Multi-team store (active entry in `teamsJson`).
+     *   2. Legacy single-token keys (`serverUrl` + `token`).
+     *   3. null (not configured).
+     */
+    fun activeCredential(): ActiveCredential? {
+        // 1. Multi-team store
+        val store = TeamCredentialStore(this)
+        store.getActive()?.let {
+            return ActiveCredential(it.url, it.token, it.caPem)
+        }
+        // 2. Legacy fallback
+        val url = serverUrl
+        val tok = token
+        if (!url.isNullOrBlank() && !tok.isNullOrBlank()) {
+            return ActiveCredential(url, tok, caPem)
+        }
+        return null
+    }
+
     companion object {
         const val FILE_NAME = "vezir_secure_prefs"
         private const val KEY_URL = "vezir_url"
