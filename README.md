@@ -19,11 +19,12 @@ your meetings repo.
 
 ## Status
 
-Alpha (0.1.5). Sideload only; no Play Store. End-to-end validated
+Alpha (0.2.5). Sideload only; no Play Store. End-to-end validated
 against a Blink dev-sync sandbox session: phone records a Google Meet
 meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
-at 16 kHz mono / 24 kbps, uploads to a Vezir server over Tailscale, and
-the server's worker produces a usable transcript + summary.
+at 16 kHz mono / 24 kbps, uploads to a Vezir server over nvpn / Tailscale,
+and the server's worker produces a usable transcript + summary.
+Full release history in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What it does
 
