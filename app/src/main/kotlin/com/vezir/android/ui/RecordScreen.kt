@@ -10,9 +10,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,18 +19,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,7 +65,6 @@ import com.vezir.android.data.Prefs
 @Composable
 fun RecordScreen(
     prefs: Prefs,
-    onSignOut: () -> Unit,
     onUpload: (
         uri: android.net.Uri,
         fileName: String,
@@ -80,7 +73,6 @@ fun RecordScreen(
         autoLabel: Boolean,
         sync: Boolean,
     ) -> Unit,
-    onImport: () -> Unit,
 ) {
     val context = LocalContext.current
     val snapshot by CaptureController.state.collectAsState()
@@ -99,7 +91,6 @@ fun RecordScreen(
     var autoLabel by remember { mutableStateOf(prefs.autoLabel) }
     var sync by remember { mutableStateOf(prefs.sync) }
     var personal by remember { mutableStateOf(prefs.personal) }
-    var autoDelete by remember { mutableStateOf(prefs.autoDeleteAfterUpload) }
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -148,7 +139,7 @@ fun RecordScreen(
         snapshot.state == CaptureController.State.FINISHED ||
         snapshot.state == CaptureController.State.ERROR
 
-    ScreenScaffold {
+    ScreenScaffold(scrollable = false) {
         CompactBrandHeader(title = "record")
 
         OutlinedTextField(
@@ -233,24 +224,6 @@ fun RecordScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Sync to git",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(
-                checked = sync && !personal,  // personal forces sync off
-                onCheckedChange = {
-                    sync = it
-                    prefs.sync = it
-                },
-                enabled = idleish && !personal,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
                 "Personal recording",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
@@ -261,25 +234,6 @@ fun RecordScreen(
                 onCheckedChange = {
                     personal = it
                     prefs.personal = it
-                },
-                enabled = idleish,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Auto-delete after upload",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Switch(
-                checked = autoDelete,
-                onCheckedChange = {
-                    autoDelete = it
-                    prefs.autoDeleteAfterUpload = it
                 },
                 enabled = idleish,
             )
@@ -445,9 +399,10 @@ fun RecordScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(4.dp))
+        if (permissionStatus != null) {
+            MonoStatus(permissionStatus!!,
+                color = MaterialTheme.colorScheme.error)
+        }
 
         Text(
             "Max recording duration: %.1f h (hard stop)"
@@ -455,47 +410,6 @@ fun RecordScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        if (permissionStatus != null) {
-            MonoStatus(permissionStatus!!,
-                color = MaterialTheme.colorScheme.error)
-        }
-
-        // ── Actions overflow menu ──
-        var menuExpanded by remember { mutableStateOf(false) }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            OutlinedButton(onClick = { menuExpanded = true }) {
-                Text("Actions")
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = "Actions",
-                    modifier = Modifier.padding(start = 4.dp),
-                )
-            }
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Import recording") },
-                    enabled = idleish,
-                    onClick = {
-                        menuExpanded = false
-                        onImport()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Sign out") },
-                    onClick = {
-                        menuExpanded = false
-                        onSignOut()
-                    },
-                )
-            }
-        }
     }
 }
 

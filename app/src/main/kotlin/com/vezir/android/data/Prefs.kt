@@ -131,13 +131,55 @@ class Prefs(context: Context) {
             }.apply()
         }
 
+    // ── Multi-team credentials (v0.3.0+) ──
+
+    /** JSON-encoded list of [TeamCredential] entries. */
+    var teamsJson: String?
+        get() = prefs.getString(KEY_TEAMS_JSON, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_TEAMS_JSON)
+                else putString(KEY_TEAMS_JSON, value)
+            }.apply()
+        }
+
+    /** Team slug of the currently active team. */
+    var activeTeamId: String?
+        get() = prefs.getString(KEY_ACTIVE_TEAM_ID, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_ACTIVE_TEAM_ID)
+                else putString(KEY_ACTIVE_TEAM_ID, value)
+            }.apply()
+        }
+
+    /** True if the legacy single-token keys are present. */
+    fun hasLegacyCredentials(): Boolean =
+        !serverUrl.isNullOrBlank() && !token.isNullOrBlank()
+
+    /** True if multi-team credentials are configured. */
+    fun hasTeamCredentials(): Boolean =
+        !teamsJson.isNullOrBlank()
+
+    /** Clear legacy single-token keys only (after migration). */
+    fun clearLegacyCredentials() {
+        prefs.edit()
+            .remove(KEY_URL)
+            .remove(KEY_TOKEN)
+            .remove(KEY_CA_PEM)
+            .apply()
+    }
+
     fun clear() {
         prefs.edit().clear().apply()
     }
 
-    /** Convenience: true iff both URL and token are set. */
+    /**
+     * Convenience: true iff the app has usable credentials —
+     * either multi-team or legacy single-token.
+     */
     fun isConfigured(): Boolean =
-        !serverUrl.isNullOrBlank() && !token.isNullOrBlank()
+        hasTeamCredentials() || hasLegacyCredentials()
 
     companion object {
         const val FILE_NAME = "vezir_secure_prefs"
@@ -149,6 +191,8 @@ class Prefs(context: Context) {
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
+        private const val KEY_TEAMS_JSON = "vezir_teams_json"
+        private const val KEY_ACTIVE_TEAM_ID = "vezir_active_team_id"
         const val DEFAULT_PRESET = "high-quality"
 
         /**

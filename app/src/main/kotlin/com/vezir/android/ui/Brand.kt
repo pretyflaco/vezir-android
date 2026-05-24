@@ -118,6 +118,7 @@ fun CompactBrandHeader(
 @Composable
 fun ScreenScaffold(
     modifier: Modifier = Modifier,
+    scrollable: Boolean = true,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -138,7 +139,10 @@ fun ScreenScaffold(
             modifier = Modifier
                 .widthIn(max = 480.dp)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .then(
+                    if (scrollable) Modifier.verticalScroll(rememberScrollState())
+                    else Modifier,
+                )
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = horizontalAlignment,
             verticalArrangement = Arrangement.spacedBy(16.dp),
