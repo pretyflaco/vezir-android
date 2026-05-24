@@ -6,6 +6,15 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+> **Note (2026-05-24):** the upstream meeting-transcription pipeline
+> was renamed `meetscribe` → `millet` (named after the Ottoman millet
+> system) in vezir 0.4.0.  Existing Android sessions and the HTTP API
+> are unaffected — the Android client talks to vezir's API only, never
+> to the renamed Python packages directly.  Historical CHANGELOG
+> entries below still mention `meetscribe` where that was the
+> ecosystem name at the time of release; references are accurate as
+> historical record.
+
 ## 0.2.5 — fix bottom nav occlusion, Actions menu on Record ([release](https://github.com/pretyflaco/vezir-android/releases/tag/v0.2.5))
 
 ### Fixed

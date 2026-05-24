@@ -13,7 +13,7 @@ Android thin client for [Vezir](https://github.com/pretyflaco/vezir).
 
 Records meeting audio on the phone (system playback + microphone),
 encodes it to OGG/Opus on-device, and uploads to a self-hosted Vezir
-server. The existing meetscribe pipeline on the server handles
+server. The existing millet (formerly meetscribe) pipeline on the server handles
 transcription, diarization, summarization, PDF generation, and sync to
 your meetings repo.
 
