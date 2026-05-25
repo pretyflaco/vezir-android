@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,10 +24,19 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -85,28 +95,83 @@ fun BrandHeader(
 /**
  * Compact brand header with the mark only. Used on Record / Upload /
  * Import where the action surface needs the screen real estate.
+ *
+ * When [teamLabel] is non-null and there are multiple teams, a
+ * dropdown button is rendered right-aligned in the same row, allowing
+ * one-tap team switching without a separate TopAppBar.
  */
 @Composable
 fun CompactBrandHeader(
     title: String,
     modifier: Modifier = Modifier,
+    teamLabel: String? = null,
+    teams: List<com.vezir.android.data.TeamCredential> = emptyList(),
+    activeTeamId: String? = null,
+    onSwitchTeam: ((String) -> Unit)? = null,
 ) {
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 4.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         androidx.compose.foundation.Image(
             painter = painterResource(R.drawable.vezir_mark),
             contentDescription = null,
             modifier = Modifier.size(32.dp),
         )
+        Spacer(Modifier.width(12.dp))
         Text(
             title,
             style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.weight(1f),
         )
+        if (teamLabel != null && teams.size > 1 && onSwitchTeam != null) {
+            Box {
+                TextButton(onClick = { dropdownExpanded = true }) {
+                    Text(
+                        teamLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = "Switch team",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                DropdownMenu(
+                    expanded = dropdownExpanded,
+                    onDismissRequest = { dropdownExpanded = false },
+                ) {
+                    teams.forEach { team ->
+                        val isActive = team.id == activeTeamId
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    team.label.ifBlank { team.id },
+                                    color = if (isActive) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurface,
+                                )
+                            },
+                            onClick = {
+                                dropdownExpanded = false
+                                onSwitchTeam(team.id)
+                            },
+                        )
+                    }
+                }
+            }
+        } else if (teamLabel != null) {
+            // Single team — show label without dropdown
+            Text(
+                teamLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

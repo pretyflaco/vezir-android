@@ -65,6 +65,10 @@ import com.vezir.android.data.Prefs
 @Composable
 fun RecordScreen(
     prefs: Prefs,
+    teamLabel: String? = null,
+    teams: List<com.vezir.android.data.TeamCredential> = emptyList(),
+    activeTeamId: String? = null,
+    onSwitchTeam: ((String) -> Unit)? = null,
     onUpload: (
         uri: android.net.Uri,
         fileName: String,
@@ -139,8 +143,14 @@ fun RecordScreen(
         snapshot.state == CaptureController.State.FINISHED ||
         snapshot.state == CaptureController.State.ERROR
 
-    ScreenScaffold(scrollable = false) {
-        CompactBrandHeader(title = "record")
+    ScreenScaffold {
+        CompactBrandHeader(
+            title = "record",
+            teamLabel = teamLabel,
+            teams = teams,
+            activeTeamId = activeTeamId,
+            onSwitchTeam = onSwitchTeam,
+        )
 
         OutlinedTextField(
             value = title,

@@ -39,6 +39,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun SessionListScreen(
     prefs: Prefs,
+    teamLabel: String? = null,
+    teams: List<com.vezir.android.data.TeamCredential> = emptyList(),
+    activeTeamId: String? = null,
+    onSwitchTeam: ((String) -> Unit)? = null,
     onSessionClick: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -80,19 +84,13 @@ fun SessionListScreen(
     LaunchedEffect(cred) { refresh() }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Sessions",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = { refresh() }, enabled = !loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-            }
-        }
+        CompactBrandHeader(
+            title = "sessions",
+            teamLabel = teamLabel,
+            teams = teams,
+            activeTeamId = activeTeamId,
+            onSwitchTeam = onSwitchTeam,
+        )
 
         if (loading && sessions.isEmpty()) {
             CircularProgressIndicator(

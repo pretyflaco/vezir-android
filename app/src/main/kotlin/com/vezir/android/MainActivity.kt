@@ -7,25 +7,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,7 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
@@ -107,7 +93,6 @@ private sealed class Screen {
     data class ArtifactView(val sessionId: String, val artifactName: String) : Screen()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -121,7 +106,7 @@ private fun AppRoot() {
 
     // Team state — refreshed on launch and after switches.
     var activeTeamLabel by remember { mutableStateOf<String?>(null) }
-    var teamDropdownExpanded by remember { mutableStateOf(false) }
+    var teams by remember { mutableStateOf(teamStore.loadAll()) }
 
     // On first composition, attempt migration + /api/me fetch.
     LaunchedEffect(Unit) {
@@ -149,9 +134,9 @@ private fun AppRoot() {
                     )
                     prefs.clearLegacyCredentials()
                     activeTeamLabel = me.team_name
+                    teams = teamStore.loadAll()
                     Log.i("Vezir", "Migrated legacy credentials to team ${me.team_id}")
                 } else {
-                    // /api/me failed — keep legacy mode, retry next launch.
                     Log.w("Vezir", "Migration deferred: /api/me failed")
                 }
             } catch (e: Exception) {
@@ -164,6 +149,7 @@ private fun AppRoot() {
         if (active != null) {
             activeTeamLabel = active.label.ifBlank { active.id }
         }
+        teams = teamStore.loadAll()
     }
 
     val currentScreen = stack.lastOrNull() ?: Screen.Splash
@@ -172,9 +158,6 @@ private fun AppRoot() {
     val showBottomBar = currentScreen is Screen.Record ||
         currentScreen is Screen.SessionList ||
         currentScreen is Screen.Settings
-
-    // Whether to show the top app bar with team dropdown.
-    val showTopBar = showBottomBar && teamStore.loadAll().size > 1
 
     // Back handler: pop stack, or switch to Record tab, or let system handle.
     BackHandler(enabled = stack.size > 1 || currentTab != Tab.Record) {
@@ -206,57 +189,6 @@ private fun AppRoot() {
     }
 
     Scaffold(
-        topBar = {
-            if (showTopBar) {
-                TopAppBar(
-                    title = {
-                        Box {
-                            TextButton(
-                                onClick = { teamDropdownExpanded = true },
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Text(
-                                        activeTeamLabel ?: "vezir",
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Icon(
-                                        Icons.Filled.ArrowDropDown,
-                                        contentDescription = "Switch team",
-                                    )
-                                }
-                            }
-                            DropdownMenu(
-                                expanded = teamDropdownExpanded,
-                                onDismissRequest = { teamDropdownExpanded = false },
-                            ) {
-                                teamStore.loadAll().forEach { team ->
-                                    val isActive = team.id == teamStore.activeId()
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                team.label.ifBlank { team.id },
-                                                color = if (isActive) MaterialTheme.colorScheme.primary
-                                                    else MaterialTheme.colorScheme.onSurface,
-                                            )
-                                        },
-                                        onClick = {
-                                            teamDropdownExpanded = false
-                                            switchToTeam(team.id)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                    ),
-                )
-            }
-        },
         bottomBar = {
             if (showBottomBar) {
                 BottomNavBar(
@@ -313,6 +245,7 @@ private fun AppRoot() {
                                     )
                                     prefs.clearLegacyCredentials()
                                     activeTeamLabel = me.team_name
+                                    teams = teamStore.loadAll()
                                 }
                             } catch (_: Exception) {
                                 // /api/me failed — keep legacy credentials
@@ -334,6 +267,10 @@ private fun AppRoot() {
             )
             Screen.Record -> RecordScreen(
                 prefs = prefs,
+                teamLabel = activeTeamLabel,
+                teams = teams,
+                activeTeamId = teamStore.activeId(),
+                onSwitchTeam = { switchToTeam(it) },
                 onUpload = { uri, name, title, preset, autoLabel, sync ->
                     push(
                         Screen.Upload(
@@ -367,8 +304,6 @@ private fun AppRoot() {
                 onDismiss = { pop() },
                 onLabel = { sessionId -> push(Screen.Label(sessionId)) },
                 onSessionDetail = { sessionId ->
-                    // Replace upload screen with session detail so back
-                    // from detail goes to Record, not back to upload.
                     replaceTop(Screen.SessionDetail(sessionId))
                 },
             )
@@ -380,6 +315,10 @@ private fun AppRoot() {
             )
             Screen.SessionList -> SessionListScreen(
                 prefs = prefs,
+                teamLabel = activeTeamLabel,
+                teams = teams,
+                activeTeamId = teamStore.activeId(),
+                onSwitchTeam = { switchToTeam(it) },
                 onSessionClick = { sessionId ->
                     push(Screen.SessionDetail(sessionId))
                 },
@@ -409,9 +348,6 @@ private fun AppRoot() {
                     replaceTop(Screen.Setup)
                 },
                 onAddTeam = {
-                    // Re-use the QR enrollment flow but for adding
-                    // another team. After QR scan populates legacy keys,
-                    // the next onConfigured will call /api/me.
                     push(Screen.Setup)
                 },
                 onSwitchTeam = { teamId -> switchToTeam(teamId) },
