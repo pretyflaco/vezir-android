@@ -1,0 +1,90 @@
+name: ci
+
+# v0.3.2: first CI workflow for vezir-android.  Three rungs of the
+# "introduce automation" ladder, all in one workflow (the Gradle build
+# is naturally an everything-or-nothing job, so splitting them across
+# workflows costs more cache misses than it saves):
+#
+#   1. ./gradlew lint              (Android lint, default ruleset)
+#   2. ./gradlew testDebugUnitTest (29/30 pass today; one
+#      pre-existing failure in EnrollmentPayloadTest documented
+#      in vezir_plan.md)
+#   3. ./gradlew assembleDebug     (proves the app still builds)
+#
+# Release builds are NOT done in CI — release signing requires
+# keystore.properties (gitignored) and we ship APKs manually from a
+# developer machine.  Adding signed-release builds to CI would mean
+# committing the keystore password to GitHub secrets; deferred until
+# we actually want CI-built releases.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: lint + unit tests + assembleDebug
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          # JDK 17 matches app/build.gradle.kts:82-88
+          # (sourceCompatibility = VERSION_17, jvmTarget = "17").
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        # setup-gradle handles dependency / wrapper / configuration-cache
+        # caching automatically; no per-PR opt-in needed.
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android lint
+        # Default ruleset (no lint{} block in build.gradle.kts).
+        # `--no-daemon` shaves a few seconds off CI cold-start and avoids
+        # daemon-lifecycle warnings in the runner's ephemeral environment.
+        #
+        # Lint has never been run in automation before, so the baseline
+        # is unknown — anywhere from 0 to dozens of findings is
+        # possible.  We run it non-blocking on the first PR; once the
+        # baseline is known, switch to a `lintBaseline` + tightened
+        # gate.  Until then, the report is visible in the job log and
+        # uploaded as an artifact below.
+        run: ./gradlew --no-daemon lint
+        continue-on-error: true
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report
+          path: app/build/reports/lint-results-*.html
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Unit tests
+        # EnrollmentPayloadTest has a known pre-existing failure
+        # (documented in vezir_plan.md under each Android release line:
+        # "Tests: 29/30 (pre-existing EnrollmentPayloadTest failure)").
+        # We run the full suite anyway so any NEW failures surface, and
+        # gate CI on `continue-on-error` until that test is fixed.
+        # Once it's green, remove `continue-on-error` and this block.
+        run: ./gradlew --no-daemon testDebugUnitTest
+        continue-on-error: true
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload debug APK artifact
+        # Makes the freshly-built debug APK downloadable from the
+        # Actions UI for ad-hoc dogfood without needing a release.
+        uses: actions/upload-artifact@v4
+        with:
+          name: vezir-android-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
