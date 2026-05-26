@@ -64,12 +64,9 @@ class Uploader(
     fun interface OnRetry { fun onRetry(attempt: Int, max: Int, cause: Throwable) }
 
     private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(30, TimeUnit.SECONDS)
-            // Long readTimeout so we don't kill an upload mid-flight on a
-            // sluggish Tailscale path; 30 minutes covers a 3h recording at
-            // any reasonable network speed.
-            .readTimeout(30, TimeUnit.MINUTES)
+        HttpClients.build(caPem, connectTimeoutSec = 30, readTimeoutSec = 30 * 60)
+            .newBuilder()
+            // Long write timeout for large uploads over slow paths.
             .writeTimeout(30, TimeUnit.MINUTES)
             .build()
 

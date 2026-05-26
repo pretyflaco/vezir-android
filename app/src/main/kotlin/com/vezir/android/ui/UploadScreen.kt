@@ -44,12 +44,19 @@ fun UploadScreen(
 
     val cred = remember { prefs.activeCredential() }
 
+    // v0.4.4: probe /health to find a reachable URL before uploading.
+    // The Uploader has its own retry logic + streaming, so we can't wrap
+    // it with ResilientApi.execute{}.  Instead, resolve the URL upfront.
     LaunchedEffect(contentUri, fileName) {
         val c = cred ?: return@LaunchedEffect
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
+            val resilient = com.vezir.android.net.ResilientApi(
+                c.url, c.altUrls, c.token, c.caPem,
+            )
+            val uploadUrl = resilient.findReachableUrl() ?: c.url
             UploadController.startUpload(
-                baseUrl = c.url,
+                baseUrl = uploadUrl,
                 token = c.token,
                 contentResolver = context.contentResolver,
                 contentUri = contentUri,

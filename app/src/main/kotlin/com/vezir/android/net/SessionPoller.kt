@@ -5,13 +5,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * Polls GET /api/sessions/{id} every [intervalMs] until the server reports
@@ -48,11 +45,7 @@ class SessionPoller(
         val isTerminal: Boolean get() = status in TERMINAL
     }
 
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
+    private val client = HttpClients.build(caPem)
 
     /** Cold flow that emits status updates until terminal, then completes. */
     fun poll(sessionId: String): Flow<SessionStatus> = flow {

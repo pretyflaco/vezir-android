@@ -59,7 +59,7 @@ class ResilientApi(
      * Probe `GET /health` on each URL (starting with [lastGoodUrl])
      * and return the first one that responds successfully, or null.
      */
-    private suspend fun findReachableUrl(): String? = withContext(Dispatchers.IO) {
+    suspend fun findReachableUrl(): String? = withContext(Dispatchers.IO) {
         // Try last-good first, then the rest in order.
         val ordered = buildList {
             add(lastGoodUrl)

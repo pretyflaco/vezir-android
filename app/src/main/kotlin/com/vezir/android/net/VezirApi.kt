@@ -2,10 +2,8 @@ package com.vezir.android.net
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * Tiny network surface for M1: a `/health` probe and a token-validity check
@@ -23,11 +21,7 @@ class VezirApi(
     private val token: String?,
     caPem: String? = null,
 ) {
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
+    private val client = HttpClients.build(caPem)
 
     sealed class Result {
         object Ok : Result()

@@ -4,11 +4,9 @@ import android.media.MediaPlayer
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * Plays audio clips from the vezir labeling endpoint.
@@ -29,11 +27,7 @@ class AudioClipPlayer(
         private const val TAG = "AudioClipPlayer"
     }
 
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
+    private val client = HttpClients.build(caPem)
 
     private var player: MediaPlayer? = null
     private var currentFile: File? = null

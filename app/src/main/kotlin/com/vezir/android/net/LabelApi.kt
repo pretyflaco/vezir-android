@@ -5,11 +5,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * API client for the native speaker-labeling endpoints:
@@ -28,11 +26,7 @@ class LabelApi(
         private val JSON_MEDIA = "application/json".toMediaType()
     }
 
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
+    private val client = HttpClients.build(caPem)
 
     @Serializable
     data class Speaker(
