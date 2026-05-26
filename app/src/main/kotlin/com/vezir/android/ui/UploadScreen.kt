@@ -75,6 +75,22 @@ fun UploadScreen(
         }
     }
 
+    // v0.4.0: auto-download artifacts when processing completes.
+    LaunchedEffect(snapshot.state, snapshot.serverStatus) {
+        if (snapshot.state == UploadController.State.DONE &&
+            snapshot.serverStatus == "done" &&
+            snapshot.sessionId != null) {
+            val c = cred ?: return@LaunchedEffect
+            val api = com.vezir.android.net.SessionApi(c.url, c.token, c.caPem)
+            val puller = com.vezir.android.net.ArtifactPuller(
+                api, context, prefs.activeTeamId ?: "default",
+            )
+            try {
+                puller.pullSingleSession(snapshot.sessionId!!)
+            } catch (_: Exception) {}
+        }
+    }
+
     val pct = if (snapshot.totalBytes > 0)
         (snapshot.sentBytes.toFloat() / snapshot.totalBytes.toFloat()).coerceIn(0f, 1f)
     else 0f

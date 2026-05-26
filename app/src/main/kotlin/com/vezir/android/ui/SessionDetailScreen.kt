@@ -367,8 +367,18 @@ fun SessionDetailScreen(
                     text = { Text("Open in browser") },
                     onClick = {
                         menuExpanded = false
-                        val url = "${prefs.serverUrl?.trimEnd('/')}/s/$sessionId"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        scope.launch {
+                            // v0.4.0: mint a fresh exchange code for seamless login.
+                            val freshUrl = when (val r = api.mintExchangeCode(sessionId)) {
+                                is SessionApi.Result.Ok -> r.data
+                                else -> null
+                            }
+                            val url = freshUrl
+                                ?: "${prefs.serverUrl?.trimEnd('/')}/s/$sessionId"
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+                            )
+                        }
                     },
                 )
             }

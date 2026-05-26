@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vezir.android.data.Prefs
+import com.vezir.android.net.ArtifactPuller
 import com.vezir.android.net.SessionApi
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,8 @@ fun SessionListScreen(
     var sessions by remember { mutableStateOf<List<SessionApi.Session>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var pulling by remember { mutableStateOf(false) }
+    var pullStatus by remember { mutableStateOf<String?>(null) }
 
     if (cred == null || api == null) {
         Column(modifier = Modifier.fillMaxWidth().padding(32.dp),
@@ -81,16 +85,64 @@ fun SessionListScreen(
         }
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun pullTeamMeetings() {
+        if (pulling || api == null || cred == null) return
+        scope.launch {
+            pulling = true
+            pullStatus = "pulling..."
+            val puller = ArtifactPuller(api, context, teamLabel ?: activeTeamId ?: "default")
+            val pulled = puller.pullTeamSessions(
+                limit = 50,
+                onProgress = { p ->
+                    pullStatus = if (p.current == "done") {
+                        "${p.pulled} session(s) pulled"
+                    } else {
+                        "pulling ${p.pulled + 1}/${p.total}: ${p.current}"
+                    }
+                },
+            )
+            pullStatus = if (pulled > 0) "$pulled session(s) pulled" else "up to date"
+            pulling = false
+        }
+    }
+
     LaunchedEffect(cred) { refresh() }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        CompactBrandHeader(
-            title = "sessions",
-            teamLabel = teamLabel,
-            teams = teams,
-            activeTeamId = activeTeamId,
-            onSwitchTeam = onSwitchTeam,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompactBrandHeader(
+                title = "sessions",
+                teamLabel = teamLabel,
+                teams = teams,
+                activeTeamId = activeTeamId,
+                onSwitchTeam = onSwitchTeam,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { pullTeamMeetings() }, enabled = !pulling) {
+                Icon(
+                    Icons.Filled.CloudDownload,
+                    contentDescription = "Pull team meetings",
+                    tint = if (pulling) MaterialTheme.colorScheme.onSurfaceVariant
+                           else MaterialTheme.colorScheme.primary,
+                )
+            }
+            IconButton(onClick = { refresh() }) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+            }
+        }
+
+        if (pullStatus != null) {
+            MonoStatus(
+                pullStatus!!,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
 
         if (loading && sessions.isEmpty()) {
             CircularProgressIndicator(

@@ -15,6 +15,37 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.4.0 — audio spectrometer + pull team meetings + exchange code fix
+
+### Added
+
+* **Audio level spectrometer** — graphical 12-bar waveform per channel
+  (mic + system audio) on the Record screen, replacing the numeric
+  dBFS readout.  Bars are drawn with a green gradient on Compose Canvas
+  at ~10 Hz.  Cross-platform data contract matches desktop vezir 0.6.6.
+* **Pull team meetings** — download meeting artifacts (summaries,
+  transcripts, PDFs) for team sessions into `Documents/Vezir/<team>/`.
+  Pull button (cloud download icon) added to the Sessions list header.
+  Idempotent via a local manifest; shows progress during download.
+* **Auto-download artifacts on upload completion** — when server
+  processing reaches `done`, artifacts are automatically saved to
+  `Documents/Vezir/<team>/meeting-YYYYMMDD-HHMMSS_TITLE/`.
+* **`since` query parameter** on `getSessions()` API call — enables
+  efficient incremental pulls.
+
+### Fixed
+
+* **"Open in browser" expired login** — now mints a fresh exchange
+  code via `POST /api/exchange-code` instead of using the stale
+  server URL that may prompt for a token.
+
+### Changed
+
+* Audio levels published at ~10 Hz (was 1 Hz) from CaptureService
+  via a dedicated `AudioLevels` StateFlow on CaptureController.
+* `SessionApi.getSessions()` accepts an optional `since` parameter.
+
+
 ## 0.2.5 — fix bottom nav occlusion, Actions menu on Record ([release](https://github.com/pretyflaco/vezir-android/releases/tag/v0.2.5))
 
 ### Fixed

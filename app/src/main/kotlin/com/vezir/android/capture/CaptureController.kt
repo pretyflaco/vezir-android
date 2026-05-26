@@ -18,6 +18,24 @@ object CaptureController {
 
     enum class State { IDLE, STARTING, RECORDING, PAUSED, STOPPING, FINISHED, ERROR }
 
+    /**
+     * High-frequency audio level snapshot for the spectrometer (v0.4.0).
+     * Updated at ~10 Hz from [CaptureService], separate from the 1 Hz
+     * [Snapshot] which carries the full recording state.
+     */
+    data class AudioLevels(
+        val playbackDb: Float = -90f,
+        val micDb: Float = -90f,
+    )
+
+    private val _levels = MutableStateFlow(AudioLevels())
+    val levels: StateFlow<AudioLevels> = _levels.asStateFlow()
+
+    /** CaptureService publishes audio levels at ~10 Hz. */
+    fun updateLevels(playbackDb: Float, micDb: Float) {
+        _levels.value = AudioLevels(playbackDb, micDb)
+    }
+
     data class Snapshot(
         val state: State = State.IDLE,
         val elapsedMs: Long = 0L,

@@ -75,10 +75,12 @@ class SessionApi(
         data class NetworkError(val cause: Throwable) : Result<Nothing>()
     }
 
-    suspend fun getSessions(limit: Int = 50): Result<List<Session>> =
+    suspend fun getSessions(limit: Int = 50, since: String? = null): Result<List<Session>> =
         withContext(Dispatchers.IO) {
+            var url = "${baseUrl.trimEnd('/')}/api/sessions?limit=$limit"
+            if (since != null) url += "&since=${java.net.URLEncoder.encode(since, "UTF-8")}"
             val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/sessions?limit=$limit")
+                .url(url)
                 .header("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -199,6 +201,38 @@ class SessionApi(
             if (e is IOException) Result.NetworkError(e) else throw e
         }
     }
+
+    /**
+     * Mint a fresh exchange code for browser sign-in (v0.4.0).
+     * Returns the full login URL, or null on failure.
+     */
+    suspend fun mintExchangeCode(sessionId: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/exchange-code?next=/s/$sessionId")
+                .header("Authorization", "Bearer $token")
+                .post(EMPTY_JSON)
+                .build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string() ?: return@use Result.HttpError(
+                            resp.code, "empty body",
+                        )
+                        val obj = json.decodeFromString(
+                            kotlinx.serialization.json.JsonObject.serializer(), body,
+                        )
+                        val loginUrl = obj["login_url"]?.jsonPrimitive?.content
+                            ?: return@use Result.HttpError(resp.code, "no login_url")
+                        Result.Ok(loginUrl)
+                    } else {
+                        Result.HttpError(resp.code, resp.message)
+                    }
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
 
     suspend fun getTeam(): Result<List<String>> = withContext(Dispatchers.IO) {
         val req = Request.Builder()

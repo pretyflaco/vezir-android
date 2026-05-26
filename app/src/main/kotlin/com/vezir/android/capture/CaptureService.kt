@@ -291,6 +291,7 @@ class CaptureService : Service() {
 
         val startElapsed = SystemClock.elapsedRealtime()
         var lastNotifMs = -1L
+                var lastLevelMs = -1L
         var playbackSilentSinceMs: Long = -1L
         var playbackSilentLatched = false
         var totalPausedMs = 0L
@@ -367,6 +368,13 @@ class CaptureService : Service() {
                 // tell the user "we appear to be recording mic only".
                 val pbDb = if (pbResampled > 0) rmsDbfs(outResamplePlayback, pbResampled) else -90f
                 val mcDb = if (mcResampled > 0) rmsDbfs(outResampleMic, mcResampled) else -90f
+
+                // v0.4.0: publish audio levels at ~10 Hz for spectrometer.
+                if (now - lastLevelMs >= 100L) {
+                    lastLevelMs = now
+                    CaptureController.updateLevels(pbDb, mcDb)
+                }
+
                 if (pbDb < -60f) {
                     if (playbackSilentSinceMs < 0) playbackSilentSinceMs = now
                     if (!playbackSilentLatched && now - playbackSilentSinceMs >= 10_000L) {

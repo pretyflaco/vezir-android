@@ -282,10 +282,11 @@ fun RecordScreen(
                     "size ${formatSize(snapshot.bytesWritten)}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            MonoStatus(
-                "play ${formatDb(snapshot.playbackRmsDbfs)}  " +
-                    "mic  ${formatDb(snapshot.micRmsDbfs)}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // v0.4.0: audio level spectrometer replaces numeric dBFS text.
+            val levels by CaptureController.levels.collectAsState()
+            AudioLevelMeter(
+                micDb = levels.micDb,
+                playbackDb = levels.playbackDb,
             )
             if (snapshot.displayPath != null) {
                 MonoStatus(
