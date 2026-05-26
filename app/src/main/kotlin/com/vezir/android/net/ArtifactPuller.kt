@@ -196,7 +196,8 @@ class ArtifactPuller(
                     if ("T" in it) it else "${it}T00:00:00+00:00"
                 },
             )
-            dt.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+            dt.withZoneSameInstant(java.time.ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
         } catch (_: Exception) {
             "unknown"
         }

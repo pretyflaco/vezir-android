@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,15 +62,20 @@ fun AudioLevelMeter(
     playbackDb: Float,
     modifier: Modifier = Modifier,
 ) {
-    // Rolling history buffers (shift left, append new).
-    val micHistory = remember { FloatArray(BAR_COUNT) { -90f } }
-    val sysHistory = remember { FloatArray(BAR_COUNT) { -90f } }
+    // Rolling history buffers using Compose-observable state lists.
+    // mutableStateListOf triggers recomposition when elements change,
+    // unlike FloatArray which Compose cannot observe (v0.4.1 fix for
+    // the "bars freeze after initial motion" bug).
+    val micHistory = remember { mutableStateListOf(*Array(BAR_COUNT) { -90f }) }
+    val sysHistory = remember { mutableStateListOf(*Array(BAR_COUNT) { -90f }) }
 
-    // Shift and append.
-    micHistory.copyInto(micHistory, 0, 1)
-    micHistory[BAR_COUNT - 1] = micDb
-    sysHistory.copyInto(sysHistory, 0, 1)
-    sysHistory[BAR_COUNT - 1] = playbackDb
+    // Shift left and append the new sample on each emission.
+    LaunchedEffect(micDb, playbackDb) {
+        if (micHistory.size >= BAR_COUNT) micHistory.removeAt(0)
+        micHistory.add(micDb)
+        if (sysHistory.size >= BAR_COUNT) sysHistory.removeAt(0)
+        sysHistory.add(playbackDb)
+    }
 
     Row(
         modifier = modifier
@@ -104,7 +111,7 @@ fun AudioLevelMeter(
 
 @Composable
 private fun LevelBars(
-    history: FloatArray,
+    history: List<Float>,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {

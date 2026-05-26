@@ -15,6 +15,19 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.4.1 — spectrometer polish + timezone fix
+
+### Fixed
+
+* **Spectrometer bars freeze** — replaced `FloatArray` with Compose
+  `mutableStateListOf` so bar animations continue even when consecutive
+  dBFS readings are identical (steady noise).
+* **Pull directory timestamps use local timezone** — was UTC, causing
+  mismatched folder names between local recordings and pulled sessions.
+* **"Playback capture silent" warning** — shortened text, added dismiss
+  button; resets on new recording.
+
+
 ## 0.4.0 — audio spectrometer + pull team meetings + exchange code fix
 
 ### Added

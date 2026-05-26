@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -98,6 +102,7 @@ fun RecordScreen(
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
+    var silenceWarningDismissed by remember { mutableStateOf(false) }
 
     val recordAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -124,6 +129,7 @@ fun RecordScreen(
             permissionStatus = "Recording cancelled at the consent prompt."
         }
         pendingStart = false
+        silenceWarningDismissed = false  // reset on new recording
     }
 
     if (pendingStart) {
@@ -296,15 +302,29 @@ fun RecordScreen(
             }
         }
 
-        if (snapshot.playbackSilent && active) {
-            Text(
-                "Playback capture appears silent. If your meeting app routes " +
-                    "audio through the call/voice channel (e.g. Signal), " +
-                    "Android may block playback capture. We are still " +
-                    "recording the microphone.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+        if (snapshot.playbackSilent && active && !silenceWarningDismissed) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "No direct playback capture — audio may still be captured via mic",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = { silenceWarningDismissed = true },
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Dismiss",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
         if (snapshot.errorMessage != null) {
             Text(
