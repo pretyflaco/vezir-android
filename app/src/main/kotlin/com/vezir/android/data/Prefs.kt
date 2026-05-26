@@ -186,7 +186,12 @@ class Prefs(context: Context) {
      * reading `serverUrl` / `token` / `caPem` directly so both
      * multi-team and legacy single-token paths are covered.
      */
-    data class ActiveCredential(val url: String, val token: String, val caPem: String?)
+    data class ActiveCredential(
+        val url: String,
+        val token: String,
+        val caPem: String?,
+        val altUrls: List<String> = emptyList(),
+    )
 
     /**
      * Resolve the active credential.
@@ -200,7 +205,7 @@ class Prefs(context: Context) {
         // 1. Multi-team store
         val store = TeamCredentialStore(this)
         store.getActive()?.let {
-            return ActiveCredential(it.url, it.token, it.caPem)
+            return ActiveCredential(it.url, it.token, it.caPem, it.altUrls)
         }
         // 2. Legacy fallback
         val url = serverUrl

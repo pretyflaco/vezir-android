@@ -81,7 +81,7 @@ fun UploadScreen(
             snapshot.serverStatus == "done" &&
             snapshot.sessionId != null) {
             val c = cred ?: return@LaunchedEffect
-            val api = com.vezir.android.net.SessionApi(c.url, c.token, c.caPem)
+            val api = com.vezir.android.net.ResilientApi(c.url, c.altUrls, c.token, c.caPem)
             val puller = com.vezir.android.net.ArtifactPuller(
                 api, context, prefs.activeTeamId ?: "default",
             )

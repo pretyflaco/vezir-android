@@ -12,16 +12,19 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.vezir.android.BuildConfig
 import com.vezir.android.data.Prefs
@@ -51,6 +54,7 @@ fun SettingsScreen(
     var autoDelete by remember { mutableStateOf(prefs.autoDeleteAfterUpload) }
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showRemoveTeamDialog by remember { mutableStateOf<String?>(null) }
+    var editUrlsTeamId by remember { mutableStateOf<String?>(null) }
 
     val teams = remember(prefs.teamsJson) { teamStore.loadAll() }
     val activeId = teamStore.activeId()
@@ -94,9 +98,27 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
+                        // Server URL(s)
+                        Text(
+                            team.url,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        team.altUrls.forEach { alt ->
+                            Text(
+                                "alt: $alt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
                     }
-                    if (!isActive) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(
+                            onClick = { editUrlsTeamId = team.id },
+                        ) { Text("URLs") }
+                        if (!isActive) {
                             TextButton(
                                 onClick = { onSwitchTeam(team.id) },
                             ) { Text("Use") }
@@ -247,6 +269,85 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRemoveTeamDialog = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // ── Edit URLs dialog ──
+    editUrlsTeamId?.let { teamId ->
+        val team = teams.firstOrNull { it.id == teamId } ?: return@let
+        val editAltUrls = remember(teamId) {
+            mutableStateListOf<String>().apply { addAll(team.altUrls) }
+        }
+        var newUrl by remember(teamId) { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { editUrlsTeamId = null },
+            title = { Text("Server URLs") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Primary: ${team.url}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (editAltUrls.isNotEmpty()) {
+                        Text(
+                            "Alternate URLs (tried when primary is unreachable):",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        editAltUrls.forEachIndexed { idx, url ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    url,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                TextButton(onClick = { editAltUrls.removeAt(idx) }) {
+                                    Text("Remove")
+                                }
+                            }
+                        }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        OutlinedTextField(
+                            value = newUrl,
+                            onValueChange = { newUrl = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("https://...") },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                        )
+                        TextButton(
+                            onClick = {
+                                val trimmed = newUrl.trim()
+                                if (trimmed.startsWith("http") && trimmed !in editAltUrls) {
+                                    editAltUrls.add(trimmed)
+                                    newUrl = ""
+                                }
+                            },
+                            enabled = newUrl.trim().startsWith("http"),
+                        ) { Text("Add") }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    teamStore.addOrUpdate(team.copy(altUrls = editAltUrls.toList()))
+                    editUrlsTeamId = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editUrlsTeamId = null }) { Text("Cancel") }
             },
         )
     }

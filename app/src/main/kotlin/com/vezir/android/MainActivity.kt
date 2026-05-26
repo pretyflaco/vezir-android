@@ -129,6 +129,7 @@ private fun AppRoot() {
                             label = me.team_name,
                             github = me.github,
                             isAdmin = me.is_admin,
+                            altUrls = me.alternate_urls,
                         ),
                         activate = true,
                     )
@@ -240,6 +241,7 @@ private fun AppRoot() {
                                             label = me.team_name,
                                             github = me.github,
                                             isAdmin = me.is_admin,
+                                            altUrls = me.alternate_urls,
                                         ),
                                         activate = true,
                                     )

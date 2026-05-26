@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.vezir.android.data.Prefs
+import com.vezir.android.net.ResilientApi
 import com.vezir.android.net.SessionApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -56,7 +57,7 @@ fun ArtifactViewerScreen(
     val context = LocalContext.current
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { SessionApi(it.url, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
     }
 
     if (cred == null || api == null) {
@@ -74,7 +75,7 @@ fun ArtifactViewerScreen(
     LaunchedEffect(sessionId, artifactName) {
         loading = true
         errorMsg = null
-        when (val result = api.downloadArtifact(sessionId, artifactName)) {
+        when (val result = api.execute { it.downloadArtifact(sessionId, artifactName) }) {
             is SessionApi.Result.Ok -> {
                 content = result.data
                 if (isPdf) {

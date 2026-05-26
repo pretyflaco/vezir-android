@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter
  * v0.4.0: initial implementation.
  */
 class ArtifactPuller(
-    private val api: SessionApi,
+    private val api: ResilientApi,
     private val context: Context,
     private val teamLabel: String,
 ) {
@@ -80,7 +80,7 @@ class ArtifactPuller(
         since: String? = null,
         onProgress: (PullProgress) -> Unit = {},
     ): Int = withContext(Dispatchers.IO) {
-        val result = api.getSessions(limit = limit, since = since)
+        val result = api.execute { it.getSessions(limit = limit, since = since) }
         val sessions = when (result) {
             is SessionApi.Result.Ok -> result.data
             else -> return@withContext 0
@@ -115,7 +115,7 @@ class ArtifactPuller(
      */
     suspend fun pullSingleSession(sessionId: String): Int =
         withContext(Dispatchers.IO) {
-            val result = api.getSession(sessionId)
+            val result = api.execute { it.getSession(sessionId) }
             val session = when (result) {
                 is SessionApi.Result.Ok -> result.data
                 else -> return@withContext 0
@@ -138,7 +138,7 @@ class ArtifactPuller(
         var saved = 0
         for ((key, serverName) in session.artifactMap) {
             val friendlyName = FRIENDLY_NAMES[key] ?: serverName
-            val result = api.downloadArtifact(session.id, serverName)
+            val result = api.execute { it.downloadArtifact(session.id, serverName) }
             if (result is SessionApi.Result.Ok && result.data.isNotEmpty()) {
                 if (saveToDocuments(dirname, friendlyName, result.data)) {
                     saved++

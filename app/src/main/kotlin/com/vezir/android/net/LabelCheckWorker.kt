@@ -68,14 +68,13 @@ class LabelCheckWorker(
 
     override suspend fun doWork(): Result {
         val prefs = Prefs(applicationContext)
-        val url = prefs.serverUrl
-        val token = prefs.token
-        if (url.isNullOrBlank() || token.isNullOrBlank()) {
+        val cred = prefs.activeCredential()
+        if (cred == null) {
             return Result.success()  // not enrolled
         }
 
-        val api = SessionApi(url, token, prefs.caPem)
-        val result = api.getSessions(limit = 20)
+        val api = ResilientApi(cred.url, cred.altUrls, cred.token, cred.caPem)
+        val result = api.execute { it.getSessions(limit = 20) }
         if (result !is SessionApi.Result.Ok) {
             Log.w(TAG, "failed to fetch sessions: $result")
             return Result.retry()

@@ -9,11 +9,15 @@ import kotlinx.serialization.json.Json
  *
  * v1:  {"v":1,"url":"http://...","token":"vzr_..."}
  * v2:  {"v":2,"url":"https://...","token":"vzr_...","ca_pem":"-----BEGIN CERT..."}
+ * v3:  v2 + {"alt_urls":["https://100.x.y.z"]}
  *
  * v2 adds the Caddy internal CA root certificate so the app can trust
  * the server's TLS cert without a manual cert install on the device.
  * `ca_pem` is optional even in v2 (some deployments use Let's Encrypt
  * certs that are already in the system trust store).
+ *
+ * v3 adds `alt_urls`: a list of alternate server URLs for failover
+ * when the primary URL is unreachable (e.g., nvpn down, Tailscale up).
  */
 @Serializable
 data class EnrollmentPayload(
@@ -21,6 +25,7 @@ data class EnrollmentPayload(
     val url: String,
     val token: String,
     val ca_pem: String? = null,
+    val alt_urls: List<String>? = null,  // v3: alternate server URLs
 ) {
     fun isValid(): Boolean =
         v in SUPPORTED_VERSIONS &&
@@ -29,7 +34,7 @@ data class EnrollmentPayload(
             token.isNotBlank()
 
     companion object {
-        private val SUPPORTED_VERSIONS = setOf(1, 2)
+        private val SUPPORTED_VERSIONS = setOf(1, 2, 3)
 
         private val json = Json {
             ignoreUnknownKeys = true

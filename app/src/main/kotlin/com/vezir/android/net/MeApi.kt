@@ -7,7 +7,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * Client for `GET /api/me` — returns the identity associated with a
@@ -20,16 +19,14 @@ class MeApi(
     private val baseUrl: String,
     private val token: String,
     caPem: String? = null,
+    externalClient: OkHttpClient? = null,
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
     }
 
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .build()
+    private val client: OkHttpClient = externalClient
+        ?: HttpClients.build(caPem, connectTimeoutSec = 5, readTimeoutSec = 5)
 
     @Serializable
     data class MeResponse(
@@ -37,6 +34,7 @@ class MeApi(
         val team_id: String,
         val team_name: String,
         val is_admin: Boolean = false,
+        val alternate_urls: List<String> = emptyList(),
     )
 
     suspend fun getMe(): SessionApi.Result<MeResponse> = withContext(Dispatchers.IO) {

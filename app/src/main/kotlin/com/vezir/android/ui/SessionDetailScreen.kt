@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.vezir.android.data.Prefs
+import com.vezir.android.net.ResilientApi
 import com.vezir.android.net.SessionApi
 import com.vezir.android.net.SessionPoller
 import kotlinx.coroutines.delay
@@ -57,7 +58,7 @@ fun SessionDetailScreen(
     val context = LocalContext.current
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { SessionApi(it.url, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
     }
 
     if (cred == null || api == null) {
@@ -74,7 +75,7 @@ fun SessionDetailScreen(
         scope.launch {
             loading = session == null
             errorMsg = null
-            when (val result = api.getSession(sessionId)) {
+            when (val result = api.execute { it.getSession(sessionId) }) {
                 is SessionApi.Result.Ok -> session = result.data
                 is SessionApi.Result.HttpError ->
                     errorMsg = "Server error: ${result.code} ${result.message}"
@@ -275,7 +276,7 @@ fun SessionDetailScreen(
                             showRetrySummaryDialog = false
                             scope.launch {
                                 actionBusy = true
-                                api.retrySummary(sessionId, preset = chosenPreset)
+                                api.execute { it.retrySummary(sessionId, preset = chosenPreset) }
                                 refresh()
                                 actionBusy = false
                             }
@@ -342,7 +343,7 @@ fun SessionDetailScreen(
                             menuExpanded = false
                             scope.launch {
                                 actionBusy = true
-                                api.syncNow(sessionId)
+                                api.execute { it.syncNow(sessionId) }
                                 refresh()
                                 actionBusy = false
                             }
@@ -356,7 +357,7 @@ fun SessionDetailScreen(
                             menuExpanded = false
                             scope.launch {
                                 actionBusy = true
-                                api.shareWithTeam(sessionId)
+                                api.execute { it.shareWithTeam(sessionId) }
                                 refresh()
                                 actionBusy = false
                             }
@@ -369,7 +370,7 @@ fun SessionDetailScreen(
                         menuExpanded = false
                         scope.launch {
                             // v0.4.0: mint a fresh exchange code for seamless login.
-                            val freshUrl = when (val r = api.mintExchangeCode(sessionId)) {
+                            val freshUrl = when (val r = api.execute { it.mintExchangeCode(sessionId) }) {
                                 is SessionApi.Result.Ok -> r.data
                                 else -> null
                             }

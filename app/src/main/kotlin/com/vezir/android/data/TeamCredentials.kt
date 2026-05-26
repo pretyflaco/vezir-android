@@ -24,6 +24,7 @@ data class TeamCredential(
     val label: String = "",   // human-readable team name from /api/me
     val github: String? = null, // handle from /api/me
     val isAdmin: Boolean = false,
+    val altUrls: List<String> = emptyList(),  // alternate server URLs for failover
 )
 
 /**

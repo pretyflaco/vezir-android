@@ -34,7 +34,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vezir.android.data.Prefs
+import com.vezir.android.data.TeamCredentialStore
 import com.vezir.android.net.ArtifactPuller
+import com.vezir.android.net.MeApi
+import com.vezir.android.net.ResilientApi
 import com.vezir.android.net.SessionApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,7 +54,7 @@ fun SessionListScreen(
     val scope = rememberCoroutineScope()
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { SessionApi(it.url, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
     }
 
     var sessions by remember { mutableStateOf<List<SessionApi.Session>>(emptyList()) }
@@ -75,7 +78,7 @@ fun SessionListScreen(
         scope.launch {
             loading = true
             errorMsg = null
-            when (val result = api.getSessions()) {
+            when (val result = api.execute { it.getSessions() }) {
                 is SessionApi.Result.Ok -> sessions = result.data
                 is SessionApi.Result.HttpError ->
                     errorMsg = "Server error: ${result.code} ${result.message}"
@@ -109,25 +112,45 @@ fun SessionListScreen(
         }
     }
 
-    // v0.4.2: auto-retry on network errors with backoff.
-    // VPN mesh may take 1-2 minutes to establish after daemon restart;
-    // auto-retrying prevents the user from tapping Retry repeatedly.
+    // v0.4.3: ResilientApi probes /health on all URLs (primary + alts)
+    // and falls back automatically.  We still retry on NetworkError in
+    // case ALL URLs are down initially (VPN mesh establishing).
     LaunchedEffect(cred) {
         if (api == null) return@LaunchedEffect
-        val maxRetries = 5
+        val maxRetries = 3
         for (attempt in 1..maxRetries) {
             loading = true
             errorMsg = null
-            when (val result = api.getSessions()) {
+            when (val result = api.execute { it.getSessions() }) {
                 is SessionApi.Result.Ok -> {
                     sessions = result.data
                     loading = false
+                    // Background refresh of alternate URLs from /api/me.
+                    val c = cred
+                    if (c != null) {
+                        val meApi = MeApi(
+                            api.lastGoodUrl, c.token, c.caPem,
+                            externalClient = api.client,
+                        )
+                        val meResult = meApi.getMe()
+                        if (meResult is SessionApi.Result.Ok) {
+                            val me = meResult.data
+                            if (me.alternate_urls != c.altUrls) {
+                                val store = TeamCredentialStore(prefs)
+                                store.getActive()?.let { current ->
+                                    store.addOrUpdate(
+                                        current.copy(altUrls = me.alternate_urls),
+                                    )
+                                }
+                            }
+                        }
+                    }
                     return@LaunchedEffect
                 }
                 is SessionApi.Result.HttpError -> {
                     errorMsg = "Server error: ${result.code} ${result.message}"
                     loading = false
-                    return@LaunchedEffect  // HTTP errors don't retry
+                    return@LaunchedEffect
                 }
                 is SessionApi.Result.NetworkError -> {
                     if (attempt >= maxRetries) {
@@ -136,7 +159,7 @@ fun SessionListScreen(
                     } else {
                         errorMsg = "Connecting to server (attempt $attempt/$maxRetries)..."
                         loading = false
-                        delay(attempt * 10_000L)  // 10s, 20s, 30s, 40s
+                        delay(15_000L)
                     }
                 }
             }

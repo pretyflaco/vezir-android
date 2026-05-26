@@ -11,7 +11,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * API client for session list, detail, sync-now, share, and artifact
@@ -21,17 +20,15 @@ class SessionApi(
     private val baseUrl: String,
     private val token: String,
     caPem: String? = null,
+    externalClient: OkHttpClient? = null,
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
         private val EMPTY_JSON = "{}".toRequestBody("application/json".toMediaType())
     }
 
-    private val client: OkHttpClient =
-        (caPem?.let { CaTrustManager.builderWithCa(it) } ?: OkHttpClient.Builder())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
+    private val client: OkHttpClient = externalClient
+        ?: HttpClients.build(caPem)
 
     @Serializable
     data class Session(
