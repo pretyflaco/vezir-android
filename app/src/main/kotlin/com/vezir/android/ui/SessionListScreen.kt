@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.vezir.android.data.Prefs
 import com.vezir.android.net.ArtifactPuller
 import com.vezir.android.net.SessionApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -108,7 +109,39 @@ fun SessionListScreen(
         }
     }
 
-    LaunchedEffect(cred) { refresh() }
+    // v0.4.2: auto-retry on network errors with backoff.
+    // VPN mesh may take 1-2 minutes to establish after daemon restart;
+    // auto-retrying prevents the user from tapping Retry repeatedly.
+    LaunchedEffect(cred) {
+        if (api == null) return@LaunchedEffect
+        val maxRetries = 5
+        for (attempt in 1..maxRetries) {
+            loading = true
+            errorMsg = null
+            when (val result = api.getSessions()) {
+                is SessionApi.Result.Ok -> {
+                    sessions = result.data
+                    loading = false
+                    return@LaunchedEffect
+                }
+                is SessionApi.Result.HttpError -> {
+                    errorMsg = "Server error: ${result.code} ${result.message}"
+                    loading = false
+                    return@LaunchedEffect  // HTTP errors don't retry
+                }
+                is SessionApi.Result.NetworkError -> {
+                    if (attempt >= maxRetries) {
+                        errorMsg = "Network error: ${result.cause.message}"
+                        loading = false
+                    } else {
+                        errorMsg = "Connecting to server (attempt $attempt/$maxRetries)..."
+                        loading = false
+                        delay(attempt * 10_000L)  // 10s, 20s, 30s, 40s
+                    }
+                }
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
