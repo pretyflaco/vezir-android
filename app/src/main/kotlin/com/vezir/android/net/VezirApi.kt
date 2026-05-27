@@ -45,11 +45,16 @@ class VezirApi(
         }
     }
 
-    /** GET /api/sessions, bearer-auth. Used to validate the stored token. */
+    /** GET /api/me, bearer-auth.  Used to validate the stored token.
+     *
+     *  v0.5.0: switched from /api/sessions (team-scoped) to /api/me
+     *  (team-agnostic).  /api/sessions now requires an X-Team-Id
+     *  header on vezir 0.7.0+ which we don't have at token-check time.
+     */
     suspend fun checkToken(): Result = withContext(Dispatchers.IO) {
         val tok = token ?: return@withContext Result.HttpError(401, "no token configured")
         val req = Request.Builder()
-            .url(baseUrl.trimEnd('/') + "/api/sessions?limit=1")
+            .url(baseUrl.trimEnd('/') + "/api/me")
             .header("Authorization", "Bearer $tok")
             .get()
             .build()

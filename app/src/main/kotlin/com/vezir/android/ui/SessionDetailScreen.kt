@@ -1,7 +1,5 @@
 package com.vezir.android.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,7 +56,7 @@ fun SessionDetailScreen(
     val context = LocalContext.current
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.id, it.caPem) }
     }
 
     if (cred == null || api == null) {
@@ -364,24 +362,10 @@ fun SessionDetailScreen(
                         },
                     )
                 }
-                DropdownMenuItem(
-                    text = { Text("Open in browser") },
-                    onClick = {
-                        menuExpanded = false
-                        scope.launch {
-                            // v0.4.0: mint a fresh exchange code for seamless login.
-                            val freshUrl = when (val r = api.execute { it.mintExchangeCode(sessionId) }) {
-                                is SessionApi.Result.Ok -> r.data
-                                else -> null
-                            }
-                            val url = freshUrl
-                                ?: "${prefs.serverUrl?.trimEnd('/')}/s/$sessionId"
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url)),
-                            )
-                        }
-                    },
-                )
+                // v0.5.0: "Open in browser" removed. vezir server 0.7.0
+                // no longer ships an HTML dashboard, and the exchange-code
+                // endpoint that powered seamless login is gone. The
+                // session detail screen here is now the canonical view.
             }
         }
     }

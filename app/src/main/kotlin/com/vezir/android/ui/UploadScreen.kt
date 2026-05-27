@@ -1,6 +1,5 @@
 package com.vezir.android.ui
 
-import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -52,12 +51,13 @@ fun UploadScreen(
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
             val resilient = com.vezir.android.net.ResilientApi(
-                c.url, c.altUrls, c.token, c.caPem,
+                c.url, c.altUrls, c.token, c.id, c.caPem,
             )
             val uploadUrl = resilient.findReachableUrl() ?: c.url
             UploadController.startUpload(
                 baseUrl = uploadUrl,
                 token = c.token,
+                teamId = c.id,
                 contentResolver = context.contentResolver,
                 contentUri = contentUri,
                 fileName = fileName,
@@ -88,7 +88,9 @@ fun UploadScreen(
             snapshot.serverStatus == "done" &&
             snapshot.sessionId != null) {
             val c = cred ?: return@LaunchedEffect
-            val api = com.vezir.android.net.ResilientApi(c.url, c.altUrls, c.token, c.caPem)
+            val api = com.vezir.android.net.ResilientApi(
+                c.url, c.altUrls, c.token, c.id, c.caPem,
+            )
             val puller = com.vezir.android.net.ArtifactPuller(
                 api, context, prefs.activeTeamId ?: "default",
             )
@@ -227,18 +229,8 @@ fun UploadScreen(
             ) { Text("View session") }
         }
 
-        // Open in browser fallback.
-        if (snapshot.dashboardLoginUrl != null &&
-            snapshot.state != UploadController.State.UPLOADING) {
-            OutlinedButton(
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW,
-                        Uri.parse(snapshot.dashboardLoginUrl))
-                    context.startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-            ) { Text("Open in browser") }
-        }
+        // v0.5.0: "Open in browser" removed; vezir 0.7.0 has no HTML
+        // dashboard.  Use "View session" above instead.
 
         OutlinedButton(
             onClick = {

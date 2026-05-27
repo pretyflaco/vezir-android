@@ -22,6 +22,7 @@ import java.io.IOException
 class SessionPoller(
     private val baseUrl: String,
     private val token: String,
+    private val teamId: String?,
     caPem: String? = null,
     private val intervalMs: Long = 5_000L,
 ) {
@@ -62,11 +63,11 @@ class SessionPoller(
     }.flowOn(Dispatchers.IO)
 
     fun fetchOnce(sessionId: String): SessionStatus? = try {
-        val req = Request.Builder()
-            .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId")
-            .header("Authorization", "Bearer $token")
-            .get()
-            .build()
+        val req = HttpClients.authHeaders(
+            Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId"),
+            token, teamId,
+        ).get().build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
             val body = resp.body?.string() ?: return null

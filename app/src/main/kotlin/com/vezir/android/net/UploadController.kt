@@ -34,8 +34,10 @@ object UploadController {
         val summaryError: String? = null,         // summary-only failure (transcript OK)
         val syncError: String? = null,            // sync-only failure (artifacts OK)
         val errorMessage: String? = null,         // upload-side error
-        val dashboardUrl: String? = null,
-        val dashboardLoginUrl: String? = null,
+        // v0.5.0: dashboardUrl / dashboardLoginUrl removed; the
+        // HTML dashboard was dropped in vezir server v0.7.0.  Users
+        // who want to browse the session use the app's own detail
+        // screen now.
     )
 
     private val _state = MutableStateFlow(Snapshot())
@@ -58,6 +60,7 @@ object UploadController {
     fun startUpload(
         baseUrl: String,
         token: String,
+        teamId: String?,
         contentResolver: ContentResolver,
         contentUri: Uri,
         fileName: String,
@@ -71,7 +74,7 @@ object UploadController {
         job?.cancel()
         _state.value = Snapshot(state = State.UPLOADING)
         job = scope.launch {
-            val uploader = Uploader(baseUrl, token, contentResolver, caPem)
+            val uploader = Uploader(baseUrl, token, teamId, contentResolver, caPem)
             val outcome = uploader.upload(
                 contentUri = contentUri,
                 fileName = fileName,
@@ -102,10 +105,11 @@ object UploadController {
                         sessionId = outcome.response.session_id,
                         sentBytes = outcome.response.bytes,
                         totalBytes = outcome.response.bytes,
-                        dashboardUrl = outcome.response.dashboard_url,
-                        dashboardLoginUrl = outcome.response.dashboard_login_url,
                     )
-                    pollForStatus(baseUrl, token, outcome.response.session_id, caPem)
+                    pollForStatus(
+                        baseUrl, token, teamId,
+                        outcome.response.session_id, caPem,
+                    )
                 }
                 is Uploader.Outcome.HttpError -> {
                     _state.value = _state.value.copy(
@@ -124,9 +128,10 @@ object UploadController {
     }
 
     private suspend fun pollForStatus(
-        baseUrl: String, token: String, sessionId: String, caPem: String? = null,
+        baseUrl: String, token: String, teamId: String?,
+        sessionId: String, caPem: String? = null,
     ) {
-        val poller = SessionPoller(baseUrl, token, caPem)
+        val poller = SessionPoller(baseUrl, token, teamId, caPem)
         poller.poll(sessionId).collect { status ->
             val terminal = status.status == "done" || status.status == "error"
             _state.value = _state.value.copy(

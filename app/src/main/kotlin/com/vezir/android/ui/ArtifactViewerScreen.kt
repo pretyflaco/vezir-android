@@ -57,7 +57,7 @@ fun ArtifactViewerScreen(
     val context = LocalContext.current
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.id, it.caPem) }
     }
 
     if (cred == null || api == null) {

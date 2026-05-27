@@ -20,6 +20,7 @@ import java.io.IOException
  */
 class AudioClipPlayer(
     private val token: String,
+    private val teamId: String?,
     caPem: String? = null,
     private val cacheDir: File,
 ) {
@@ -60,11 +61,9 @@ class AudioClipPlayer(
         // Fetch the WAV to a temp file (needs auth headers).
         val file = withContext(Dispatchers.IO) {
             try {
-                val req = Request.Builder()
-                    .url(url)
-                    .header("Authorization", "Bearer $token")
-                    .get()
-                    .build()
+                val req = HttpClients.authHeaders(
+                    Request.Builder().url(url), token, teamId,
+                ).get().build()
                 val resp = client.newCall(req).execute()
                 if (!resp.isSuccessful) {
                     val msg = when (resp.code) {

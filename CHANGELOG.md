@@ -15,6 +15,66 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.5.0 — vezir 0.7.0 compatibility (X-Team-Id + memberships)
+
+This release tracks the breaking server change in vezir 0.7.0.  The
+Android client now sends an ``X-Team-Id`` header on every team-scoped
+request and consumes the new ``/api/me`` memberships array.  The HTML
+dashboard handoff (browser open + exchange code) is removed.
+
+**Required server version: vezir 0.7.0+.**  Older servers will
+return 400 because they don't recognise the ``X-Team-Id`` header.
+Pin to v0.4.4 if you're still on a 0.6.x server.
+
+### Breaking changes
+
+* **Drops the "Open in browser" action** on session detail and on the
+  upload success screen.  The vezir 0.7.0 server no longer serves an
+  HTML dashboard, so there's nothing to open.  The in-app session
+  detail screen is now the canonical view.
+* **/api/me response shape**: was ``{github, team_id, team_name,
+  is_admin, alternate_urls}``; now ``{github, is_admin, memberships:
+  [{team_id, team_name, role}, ...], alternate_urls}``.  Stored
+  ``TeamCredential`` rows look the same to the rest of the app, but
+  enrollment now creates one row per membership instead of one row
+  total.
+* **Upload response**: ``dashboard_url`` and ``dashboard_login_url``
+  fields are no longer parsed (vezir 0.7.0 doesn't emit them).
+  ``UploadController.Snapshot`` lost both fields too.
+* **SessionApi.mintExchangeCode** removed; the ``/api/exchange-code``
+  server endpoint is gone.
+
+### Added
+
+* **``HttpClients.authHeaders`` helper** that injects both
+  ``Authorization`` and ``X-Team-Id`` headers on every request.
+  Single source of truth for header construction across the 7 API
+  classes (``SessionApi``, ``LabelApi``, ``MeApi``, ``Uploader``,
+  ``SessionPoller``, ``AudioClipPlayer``, ``VezirApi``).
+* **Multi-membership enrollment**: when ``/api/me`` returns >1
+  membership the app creates one ``TeamCredential`` per team, all
+  sharing the same token + URL.  The first is activated; the user
+  can switch via the existing bottom-bar team picker.
+
+### Changed
+
+* ``VezirApi.checkToken`` now hits ``/api/me`` instead of
+  ``/api/sessions``.  ``/api/sessions`` is team-scoped on vezir 0.7.0
+  and would require an ``X-Team-Id`` header that we don't have at
+  token-check time.
+* ``Prefs.ActiveCredential`` gained a nullable ``id`` (team slug)
+  field so screens can pass it through to ``HttpClients.authHeaders``.
+* The legacy single-token path (``serverUrl`` + ``token`` in
+  ``Prefs`` without a multi-team row) will hit 400s on any team-
+  scoped request until ``/api/me`` discovery populates the
+  ``TeamCredentialStore``.  This is the expected transitional state;
+  the migration runs automatically on first launch after upgrading.
+
+### Fixed
+
+* ``EnrollmentPayloadTest.rejectsUnsupportedVersion`` was checking
+  v=2 which is supported.  Switched to v=99.
+
 ## 0.4.1 — spectrometer polish + timezone fix
 
 ### Fixed

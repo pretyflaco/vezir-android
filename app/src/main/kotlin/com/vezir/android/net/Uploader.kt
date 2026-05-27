@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit
 class Uploader(
     private val baseUrl: String,
     private val token: String,
+    private val teamId: String?,
     private val contentResolver: ContentResolver,
     caPem: String? = null,
 ) {
@@ -47,8 +48,10 @@ class Uploader(
     data class UploadResponse(
         val session_id: String,
         val bytes: Long,
-        val dashboard_url: String,
-        val dashboard_login_url: String,
+        // v0.5.0: dashboard_url + dashboard_login_url removed from the
+        // server response when running vezir 0.7.0+ (the HTML dashboard
+        // is gone).  Old servers (0.6.x) still emit them; we just don't
+        // read them anywhere any more.
     )
 
     sealed class Outcome {
@@ -113,11 +116,9 @@ class Uploader(
                     contentUri, fileName, title, summaryPreset,
                     autoLabel, sync, personal, totalBytes, progress,
                 )
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Authorization", "Bearer $token")
-                    .post(body)
-                    .build()
+                val request = HttpClients.authHeaders(
+                    Request.Builder().url(url), token, teamId,
+                ).post(body).build()
                 client.newCall(request).execute().use { resp ->
                     val responseBody = resp.body?.string()
                     if (resp.isSuccessful && responseBody != null) {

@@ -73,7 +73,9 @@ class LabelCheckWorker(
             return Result.success()  // not enrolled
         }
 
-        val api = ResilientApi(cred.url, cred.altUrls, cred.token, cred.caPem)
+        val api = ResilientApi(
+            cred.url, cred.altUrls, cred.token, cred.id, cred.caPem,
+        )
         val result = api.execute { it.getSessions(limit = 20) }
         if (result !is SessionApi.Result.Ok) {
             Log.w(TAG, "failed to fetch sessions: $result")

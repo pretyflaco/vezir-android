@@ -29,6 +29,7 @@ class ResilientApi(
     private val primaryUrl: String,
     private val altUrls: List<String>,
     private val token: String,
+    private val teamId: String?,
     private val caPem: String?,
 ) {
     companion object {
@@ -106,7 +107,10 @@ class ResilientApi(
             return SessionApi.Result.NetworkError(IOException(msg))
         }
         lastGoodUrl = reachableUrl
-        val api = SessionApi(reachableUrl, token, caPem = null, externalClient = client)
+        val api = SessionApi(
+            reachableUrl, token, teamId,
+            caPem = null, externalClient = client,
+        )
         return action(api)
     }
 }

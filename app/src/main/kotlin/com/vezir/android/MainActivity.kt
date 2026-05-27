@@ -111,6 +111,9 @@ private fun AppRoot() {
     // On first composition, attempt migration + /api/me fetch.
     LaunchedEffect(Unit) {
         // Legacy -> multi-team migration (blocking, ~5s timeout).
+        // v0.5.0: /api/me now returns a memberships array (vezir 0.7.0+).
+        // We create one TeamCredential per membership, all sharing the
+        // same token + URL, and activate the first one.
         if (!prefs.hasTeamCredentials() && prefs.hasLegacyCredentials()) {
             val url = prefs.serverUrl ?: return@LaunchedEffect
             val token = prefs.token ?: return@LaunchedEffect
@@ -120,23 +123,33 @@ private fun AppRoot() {
                 val result = api.getMe()
                 if (result is SessionApi.Result.Ok) {
                     val me = result.data
-                    teamStore.addOrUpdate(
-                        TeamCredential(
-                            id = me.team_id,
-                            url = url,
-                            token = token,
-                            caPem = caPem,
-                            label = me.team_name,
-                            github = me.github,
-                            isAdmin = me.is_admin,
-                            altUrls = me.alternate_urls,
-                        ),
-                        activate = true,
-                    )
+                    if (me.memberships.isEmpty()) {
+                        Log.w("Vezir", "Migration deferred: token has no team memberships")
+                        return@LaunchedEffect
+                    }
+                    me.memberships.forEachIndexed { idx, mem ->
+                        teamStore.addOrUpdate(
+                            TeamCredential(
+                                id = mem.team_id,
+                                url = url,
+                                token = token,
+                                caPem = caPem,
+                                label = mem.team_name,
+                                github = me.github,
+                                isAdmin = me.is_admin,
+                                altUrls = me.alternate_urls,
+                            ),
+                            activate = (idx == 0),
+                        )
+                    }
                     prefs.clearLegacyCredentials()
-                    activeTeamLabel = me.team_name
+                    val first = me.memberships.first()
+                    activeTeamLabel = first.team_name
                     teams = teamStore.loadAll()
-                    Log.i("Vezir", "Migrated legacy credentials to team ${me.team_id}")
+                    Log.i(
+                        "Vezir",
+                        "Migrated legacy credentials to ${me.memberships.size} team(s)",
+                    )
                 } else {
                     Log.w("Vezir", "Migration deferred: /api/me failed")
                 }
@@ -221,7 +234,11 @@ private fun AppRoot() {
             Screen.Setup -> SetupScreen(
                 prefs = prefs,
                 onConfigured = {
-                    // After enrollment, try to discover team via /api/me.
+                    // After enrollment, discover team memberships via /api/me.
+                    // v0.5.0: returns a list -- one TeamCredential per
+                    // membership, all sharing the same token + URL.  The
+                    // first becomes active; user can switch via the
+                    // bottom-bar team picker.
                     scope.launch {
                         val url = prefs.serverUrl
                         val token = prefs.token
@@ -232,25 +249,29 @@ private fun AppRoot() {
                                 val result = api.getMe()
                                 if (result is SessionApi.Result.Ok) {
                                     val me = result.data
-                                    teamStore.addOrUpdate(
-                                        TeamCredential(
-                                            id = me.team_id,
-                                            url = url,
-                                            token = token,
-                                            caPem = caPem,
-                                            label = me.team_name,
-                                            github = me.github,
-                                            isAdmin = me.is_admin,
-                                            altUrls = me.alternate_urls,
-                                        ),
-                                        activate = true,
-                                    )
-                                    prefs.clearLegacyCredentials()
-                                    activeTeamLabel = me.team_name
-                                    teams = teamStore.loadAll()
+                                    me.memberships.forEachIndexed { idx, mem ->
+                                        teamStore.addOrUpdate(
+                                            TeamCredential(
+                                                id = mem.team_id,
+                                                url = url,
+                                                token = token,
+                                                caPem = caPem,
+                                                label = mem.team_name,
+                                                github = me.github,
+                                                isAdmin = me.is_admin,
+                                                altUrls = me.alternate_urls,
+                                            ),
+                                            activate = (idx == 0),
+                                        )
+                                    }
+                                    if (me.memberships.isNotEmpty()) {
+                                        prefs.clearLegacyCredentials()
+                                        activeTeamLabel = me.memberships.first().team_name
+                                        teams = teamStore.loadAll()
+                                    }
                                 }
                             } catch (_: Exception) {
-                                // /api/me failed — keep legacy credentials
+                                // /api/me failed -- keep legacy credentials
                             }
                         }
                     }

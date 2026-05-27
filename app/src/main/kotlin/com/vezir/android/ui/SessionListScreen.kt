@@ -54,7 +54,7 @@ fun SessionListScreen(
     val scope = rememberCoroutineScope()
     val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
     val api = remember(cred) {
-        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.caPem) }
+        cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.id, it.caPem) }
     }
 
     var sessions by remember { mutableStateOf<List<SessionApi.Session>>(emptyList()) }

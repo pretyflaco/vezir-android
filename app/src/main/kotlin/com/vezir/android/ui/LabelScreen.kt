@@ -79,15 +79,17 @@ fun LabelScreen(
     // v0.4.4: resolve reachable URL (nvpn/Tailscale failover).
     var resolvedUrl by remember { mutableStateOf(cred.url) }
     LaunchedEffect(cred) {
-        val resilient = ResilientApi(cred.url, cred.altUrls, cred.token, cred.caPem)
+        val resilient = ResilientApi(
+            cred.url, cred.altUrls, cred.token, cred.id, cred.caPem,
+        )
         resolvedUrl = resilient.findReachableUrl() ?: cred.url
     }
 
     val api = remember(resolvedUrl) {
-        LabelApi(resolvedUrl, cred.token, cred.caPem)
+        LabelApi(resolvedUrl, cred.token, cred.id, cred.caPem)
     }
     val clipPlayer = remember(cred) {
-        AudioClipPlayer(cred.token, cred.caPem, context.cacheDir)
+        AudioClipPlayer(cred.token, cred.id, cred.caPem, context.cacheDir)
     }
 
     // Cleanup player on dispose.

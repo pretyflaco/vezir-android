@@ -191,6 +191,9 @@ class Prefs(context: Context) {
         val token: String,
         val caPem: String?,
         val altUrls: List<String> = emptyList(),
+        /** Team slug for v0.7.0 X-Team-Id header; null for the legacy
+         *  single-token path (pre-multi-team enrollment). */
+        val id: String? = null,
     )
 
     /**
@@ -205,9 +208,11 @@ class Prefs(context: Context) {
         // 1. Multi-team store
         val store = TeamCredentialStore(this)
         store.getActive()?.let {
-            return ActiveCredential(it.url, it.token, it.caPem, it.altUrls)
+            return ActiveCredential(it.url, it.token, it.caPem, it.altUrls, it.id)
         }
-        // 2. Legacy fallback
+        // 2. Legacy fallback: no team_id available.  v0.7.0 servers
+        //    will 400 on team-scoped requests until /api/me discovery
+        //    runs and populates the multi-team store.
         val url = serverUrl
         val tok = token
         if (!url.isNullOrBlank() && !tok.isNullOrBlank()) {

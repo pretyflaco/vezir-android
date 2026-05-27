@@ -32,7 +32,8 @@ class EnrollmentPayloadTest {
 
     @Test
     fun rejectsUnsupportedVersion() {
-        val raw = """{"v":2,"url":"https://example.com","token":"vzr_x"}"""
+        // v1/v2/v3 are currently supported; v99 is not.
+        val raw = """{"v":99,"url":"https://example.com","token":"vzr_x"}"""
         assertNull(EnrollmentPayload.parse(raw))
     }
 

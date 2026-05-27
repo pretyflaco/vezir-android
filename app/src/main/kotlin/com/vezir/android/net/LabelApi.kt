@@ -19,6 +19,7 @@ import java.io.IOException
 class LabelApi(
     private val baseUrl: String,
     private val token: String,
+    private val teamId: String?,
     caPem: String? = null,
 ) {
     companion object {
@@ -53,11 +54,11 @@ class LabelApi(
     /** Fetch the speaker list and team handles for a session. */
     suspend fun getSpeakers(sessionId: String): Result<LabelData> =
         withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/label/$sessionId")
-                .header("Authorization", "Bearer $token")
-                .get()
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/label/$sessionId"),
+                token, teamId,
+            ).get().build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
@@ -83,11 +84,11 @@ class LabelApi(
             kotlinx.serialization.serializer<Map<String, Map<String, String>>>(),
             mapOf("labels" to labels),
         )
-        val req = Request.Builder()
-            .url("${baseUrl.trimEnd('/')}/api/label/$sessionId")
-            .header("Authorization", "Bearer $token")
-            .post(payload.toRequestBody(JSON_MEDIA))
-            .build()
+        val req = HttpClients.authHeaders(
+            Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/label/$sessionId"),
+            token, teamId,
+        ).post(payload.toRequestBody(JSON_MEDIA)).build()
         runCatching {
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {

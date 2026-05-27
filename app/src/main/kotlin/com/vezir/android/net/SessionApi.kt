@@ -15,10 +15,14 @@ import java.io.IOException
 /**
  * API client for session list, detail, sync-now, share, and artifact
  * download. Mirrors the server endpoints in vezir/server/sessions.py.
+ *
+ * v0.5.0: requires a [teamId] for vezir-server v0.7.0; the X-Team-Id
+ * header is added on every request via [HttpClients.authHeaders].
  */
 class SessionApi(
     private val baseUrl: String,
     private val token: String,
+    private val teamId: String?,
     caPem: String? = null,
     externalClient: OkHttpClient? = null,
 ) {
@@ -76,11 +80,9 @@ class SessionApi(
         withContext(Dispatchers.IO) {
             var url = "${baseUrl.trimEnd('/')}/api/sessions?limit=$limit"
             if (since != null) url += "&since=${java.net.URLEncoder.encode(since, "UTF-8")}"
-            val req = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $token")
-                .get()
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder().url(url), token, teamId,
+            ).get().build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
@@ -99,11 +101,11 @@ class SessionApi(
 
     suspend fun getSession(sessionId: String): Result<Session> =
         withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId")
-                .header("Authorization", "Bearer $token")
-                .get()
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId"),
+                token, teamId,
+            ).get().build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
@@ -122,12 +124,12 @@ class SessionApi(
 
     suspend fun syncNow(sessionId: String): Result<Boolean> =
         withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/session/$sessionId/sync")
-                .header("Authorization", "Bearer $token")
-                .header("Accept", "application/json")
-                .post(EMPTY_JSON)
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/session/$sessionId/sync")
+                    .header("Accept", "application/json"),
+                token, teamId,
+            ).post(EMPTY_JSON).build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) Result.Ok(true)
@@ -145,11 +147,11 @@ class SessionApi(
         withContext(Dispatchers.IO) {
             val bodyJson = if (preset != null) """{"preset":"$preset"}""" else "{}"
             val body = bodyJson.toRequestBody("application/json".toMediaType())
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/retry-summary")
-                .header("Authorization", "Bearer $token")
-                .post(body)
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/retry-summary"),
+                token, teamId,
+            ).post(body).build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) Result.Ok(true)
@@ -162,11 +164,11 @@ class SessionApi(
 
     suspend fun shareWithTeam(sessionId: String): Result<Boolean> =
         withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/share")
-                .header("Authorization", "Bearer $token")
-                .post(EMPTY_JSON)
-                .build()
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/share"),
+                token, teamId,
+            ).post(EMPTY_JSON).build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) Result.Ok(true)
@@ -181,11 +183,11 @@ class SessionApi(
         sessionId: String,
         name: String,
     ): Result<ByteArray> = withContext(Dispatchers.IO) {
-        val req = Request.Builder()
-            .url("${baseUrl.trimEnd('/')}/artifact/$sessionId/$name")
-            .header("Authorization", "Bearer $token")
-            .get()
-            .build()
+        val req = HttpClients.authHeaders(
+            Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/artifact/$sessionId/$name"),
+            token, teamId,
+        ).get().build()
         runCatching {
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -199,44 +201,12 @@ class SessionApi(
         }
     }
 
-    /**
-     * Mint a fresh exchange code for browser sign-in (v0.4.0).
-     * Returns the full login URL, or null on failure.
-     */
-    suspend fun mintExchangeCode(sessionId: String): Result<String> =
-        withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/exchange-code?next=/s/$sessionId")
-                .header("Authorization", "Bearer $token")
-                .post(EMPTY_JSON)
-                .build()
-            runCatching {
-                client.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val body = resp.body?.string() ?: return@use Result.HttpError(
-                            resp.code, "empty body",
-                        )
-                        val obj = json.decodeFromString(
-                            kotlinx.serialization.json.JsonObject.serializer(), body,
-                        )
-                        val loginUrl = obj["login_url"]?.jsonPrimitive?.content
-                            ?: return@use Result.HttpError(resp.code, "no login_url")
-                        Result.Ok(loginUrl)
-                    } else {
-                        Result.HttpError(resp.code, resp.message)
-                    }
-                }
-            }.getOrElse { e ->
-                if (e is IOException) Result.NetworkError(e) else throw e
-            }
-        }
-
     suspend fun getTeam(): Result<List<String>> = withContext(Dispatchers.IO) {
-        val req = Request.Builder()
-            .url("${baseUrl.trimEnd('/')}/api/team")
-            .header("Authorization", "Bearer $token")
-            .get()
-            .build()
+        val req = HttpClients.authHeaders(
+            Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/team"),
+            token, teamId,
+        ).get().build()
         runCatching {
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
