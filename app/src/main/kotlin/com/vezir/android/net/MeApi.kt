@@ -37,8 +37,9 @@ class MeApi(
 
     @Serializable
     data class Membership(
-        val team_id: String,
+        val team_id: String,        // v0.7.4: stable uuid; sent as X-Team-Id
         val team_name: String,
+        val slug: String? = null,   // v0.7.4: mutable display slug (optional)
         val role: String,  // 'admin' or 'scribe'
     )
 

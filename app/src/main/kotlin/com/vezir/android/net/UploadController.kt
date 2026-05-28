@@ -74,55 +74,125 @@ object UploadController {
         job?.cancel()
         _state.value = Snapshot(state = State.UPLOADING)
         job = scope.launch {
-            val uploader = Uploader(baseUrl, token, teamId, contentResolver, caPem)
-            val outcome = uploader.upload(
-                contentUri = contentUri,
-                fileName = fileName,
-                title = title,
-                summaryPreset = summaryPreset,
-                autoLabel = autoLabel,
-                sync = sync,
-                personal = personal,
-                progress = { sent, total ->
-                    _state.value = _state.value.copy(
-                        state = State.UPLOADING,
-                        sentBytes = sent,
-                        totalBytes = total,
-                    )
-                },
-                onRetry = { attempt, max, _ ->
-                    _state.value = _state.value.copy(
-                        attempt = attempt + 1, // we're about to attempt the next
-                        maxAttempts = max,
-                        sentBytes = 0L,        // server restarts upload from byte 0
-                    )
-                },
+            // v0.5.2: prefer the resumable protocol (resumes from the
+            // server's offset on a mid-upload drop instead of byte 0).
+            // Fall back to the legacy one-shot Uploader on servers that
+            // don't expose /upload/resumable.
+            val resumable = ResumableUploader(baseUrl, token, teamId, contentResolver, caPem)
+            val progress = ResumableUploader.Progress { sent, total ->
+                _state.value = _state.value.copy(
+                    state = State.UPLOADING, sentBytes = sent, totalBytes = total,
+                )
+            }
+            val onRetry = ResumableUploader.OnRetry { attempt, max, _ ->
+                // Resumable resumes from the server offset, so do NOT
+                // reset sentBytes to 0 here.
+                _state.value = _state.value.copy(attempt = attempt + 1, maxAttempts = max)
+            }
+
+            if (resumable.isSupported()) {
+                when (val o = resumable.upload(
+                    contentUri, fileName, title, summaryPreset,
+                    autoLabel, sync, personal,
+                    progress = progress, onRetry = onRetry,
+                )) {
+                    is ResumableUploader.Outcome.Success -> {
+                        _state.value = _state.value.copy(
+                            state = State.POLLING, sessionId = o.sessionId,
+                            sentBytes = o.bytes, totalBytes = o.bytes,
+                        )
+                        pollForStatus(baseUrl, token, teamId, o.sessionId, caPem)
+                        return@launch
+                    }
+                    is ResumableUploader.Outcome.HttpError -> {
+                        _state.value = _state.value.copy(
+                            state = State.ERROR,
+                            errorMessage = "HTTP ${o.code}: ${o.message}",
+                        )
+                        return@launch
+                    }
+                    is ResumableUploader.Outcome.Failed -> {
+                        _state.value = _state.value.copy(
+                            state = State.ERROR,
+                            errorMessage = o.cause.message ?: o.cause.toString(),
+                        )
+                        return@launch
+                    }
+                    is ResumableUploader.Outcome.Unsupported -> {
+                        // fall through to the legacy path below
+                    }
+                }
+            }
+
+            runLegacyUpload(
+                baseUrl, token, teamId, contentResolver, contentUri,
+                fileName, title, summaryPreset, autoLabel, sync, personal, caPem,
             )
-            when (outcome) {
-                is Uploader.Outcome.Success -> {
-                    _state.value = _state.value.copy(
-                        state = State.POLLING,
-                        sessionId = outcome.response.session_id,
-                        sentBytes = outcome.response.bytes,
-                        totalBytes = outcome.response.bytes,
-                    )
-                    pollForStatus(
-                        baseUrl, token, teamId,
-                        outcome.response.session_id, caPem,
-                    )
-                }
-                is Uploader.Outcome.HttpError -> {
-                    _state.value = _state.value.copy(
-                        state = State.ERROR,
-                        errorMessage = "HTTP ${outcome.code}: ${outcome.message}",
-                    )
-                }
-                is Uploader.Outcome.Failed -> {
-                    _state.value = _state.value.copy(
-                        state = State.ERROR,
-                        errorMessage = outcome.cause.message ?: outcome.cause.toString(),
-                    )
-                }
+        }
+    }
+
+    private suspend fun runLegacyUpload(
+        baseUrl: String,
+        token: String,
+        teamId: String?,
+        contentResolver: ContentResolver,
+        contentUri: Uri,
+        fileName: String,
+        title: String?,
+        summaryPreset: String?,
+        autoLabel: Boolean,
+        sync: Boolean,
+        personal: Boolean,
+        caPem: String?,
+    ) {
+        val uploader = Uploader(baseUrl, token, teamId, contentResolver, caPem)
+        val outcome = uploader.upload(
+            contentUri = contentUri,
+            fileName = fileName,
+            title = title,
+            summaryPreset = summaryPreset,
+            autoLabel = autoLabel,
+            sync = sync,
+            personal = personal,
+            progress = { sent, total ->
+                _state.value = _state.value.copy(
+                    state = State.UPLOADING,
+                    sentBytes = sent,
+                    totalBytes = total,
+                )
+            },
+            onRetry = { attempt, max, _ ->
+                _state.value = _state.value.copy(
+                    attempt = attempt + 1, // we're about to attempt the next
+                    maxAttempts = max,
+                    sentBytes = 0L,        // legacy path restarts from byte 0
+                )
+            },
+        )
+        when (outcome) {
+            is Uploader.Outcome.Success -> {
+                _state.value = _state.value.copy(
+                    state = State.POLLING,
+                    sessionId = outcome.response.session_id,
+                    sentBytes = outcome.response.bytes,
+                    totalBytes = outcome.response.bytes,
+                )
+                pollForStatus(
+                    baseUrl, token, teamId,
+                    outcome.response.session_id, caPem,
+                )
+            }
+            is Uploader.Outcome.HttpError -> {
+                _state.value = _state.value.copy(
+                    state = State.ERROR,
+                    errorMessage = "HTTP ${outcome.code}: ${outcome.message}",
+                )
+            }
+            is Uploader.Outcome.Failed -> {
+                _state.value = _state.value.copy(
+                    state = State.ERROR,
+                    errorMessage = outcome.cause.message ?: outcome.cause.toString(),
+                )
             }
         }
     }

@@ -15,6 +15,42 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.5.3 — team UUID keys (slug-rename safe)
+
+### Changed
+
+- `/api/me` memberships now carry the team's stable **uuid** in
+  `team_id` (sent back as `X-Team-Id`) plus an optional `slug` display
+  field.  The app already keys `TeamCredential.id` on `team_id`, so a
+  server-side team **slug rename** no longer orphans an enrolled team —
+  the credential keeps working via the uuid and the display name
+  refreshes on the next `/api/me`.
+
+### Requires
+
+- vezir server **0.7.4+** (UUID team keys + `vezir team rename`).
+  Older servers send a slug in `team_id`; the app still works (it just
+  keys on whatever `team_id` value the server returns).
+
+## 0.5.2 — resumable uploads
+
+### Added
+
+- **Resumable upload** (`ResumableUploader.kt`) implementing vezir's
+  tus.io 1.0 subset (`POST`/`HEAD`/`PATCH /upload/resumable`).  A
+  dropped upload now resumes from the server's current offset (via a
+  `HEAD` re-sync) instead of restarting at byte 0.  `SlicedUriBody`
+  streams a byte-range of the content URI so a resumed `PATCH` skips to
+  the resume offset without re-sending earlier bytes.
+- `UploadController` prefers the resumable path and **falls back to the
+  legacy one-shot `Uploader`** when the server doesn't expose the
+  endpoints (`Outcome.Unsupported`), so older servers still work.
+
+### Requires
+
+- vezir server **0.7.3+** for the resumable endpoints.  Against older
+  servers the client transparently uses the legacy `/upload` path.
+
 ## 0.5.1 — auto-discover new team memberships
 
 ### Fixed
