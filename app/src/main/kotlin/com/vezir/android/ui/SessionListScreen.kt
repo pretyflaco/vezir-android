@@ -49,6 +49,7 @@ fun SessionListScreen(
     teams: List<com.vezir.android.data.TeamCredential> = emptyList(),
     activeTeamId: String? = null,
     onSwitchTeam: ((String) -> Unit)? = null,
+    onTeamsChanged: (() -> Unit)? = null,
     onSessionClick: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -125,7 +126,11 @@ fun SessionListScreen(
                 is SessionApi.Result.Ok -> {
                     sessions = result.data
                     loading = false
-                    // Background refresh of alternate URLs from /api/me.
+                    // Background refresh of alternate URLs + memberships
+                    // from /api/me.  v0.5.0: a user added to a new team
+                    // (via `vezir team add-member`) sees that team appear
+                    // in the picker on the next sessions refresh, without
+                    // re-enrolling.
                     val c = cred
                     if (c != null) {
                         val meApi = MeApi(
@@ -135,13 +140,63 @@ fun SessionListScreen(
                         val meResult = meApi.getMe()
                         if (meResult is SessionApi.Result.Ok) {
                             val me = meResult.data
-                            if (me.alternate_urls != c.altUrls) {
-                                val store = TeamCredentialStore(prefs)
-                                store.getActive()?.let { current ->
+                            val store = TeamCredentialStore(prefs)
+                            val existing = store.loadAll()
+                                .associateBy { it.id }
+                            var changed = false
+
+                            // 1. Insert any memberships not yet in the local
+                            //    store.  Reuse the active credential's token,
+                            //    url, caPem, and altUrls -- v0.7.0 tokens
+                            //    cover every team the user is in.
+                            for (mem in me.memberships) {
+                                val current = existing[mem.team_id]
+                                if (current == null) {
                                     store.addOrUpdate(
-                                        current.copy(altUrls = me.alternate_urls),
+                                        com.vezir.android.data.TeamCredential(
+                                            id = mem.team_id,
+                                            url = c.url,
+                                            token = c.token,
+                                            caPem = c.caPem,
+                                            label = mem.team_name,
+                                            github = me.github,
+                                            isAdmin = me.is_admin,
+                                            altUrls = me.alternate_urls,
+                                        ),
                                     )
+                                    changed = true
+                                } else if (
+                                    current.label != mem.team_name ||
+                                    current.altUrls != me.alternate_urls
+                                ) {
+                                    // 2. Refresh label (team_name may have
+                                    //    been renamed server-side) and
+                                    //    altUrls on existing entries.
+                                    store.addOrUpdate(
+                                        current.copy(
+                                            label = mem.team_name,
+                                            altUrls = me.alternate_urls,
+                                        ),
+                                    )
+                                    changed = true
                                 }
+                            }
+
+                            // 3. Drop any locally-stored team that the
+                            //    server no longer reports as a membership
+                            //    (e.g. operator ran `vezir team
+                            //    remove-member`).  Keeps the picker honest.
+                            val serverIds = me.memberships
+                                .map { it.team_id }.toSet()
+                            for ((id, _) in existing) {
+                                if (id !in serverIds) {
+                                    store.remove(id)
+                                    changed = true
+                                }
+                            }
+
+                            if (changed) {
+                                onTeamsChanged?.invoke()
                             }
                         }
                     }

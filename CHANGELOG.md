@@ -15,6 +15,34 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.5.1 — auto-discover new team memberships
+
+### Fixed
+
+* **Team picker now updates when memberships change server-side.**
+  v0.5.0 created ``TeamCredential`` entries only at enrollment and
+  on the legacy-migration path.  If the operator ran ``vezir team
+  add-member`` to grant the user access to a new team, the picker
+  did NOT show it -- the user had to kill+relaunch (and even then
+  only the legacy migration path could discover memberships, which
+  doesn't run once multi-team is configured).
+
+  Now the existing background ``/api/me`` refresh in the sessions
+  list (already wired for ``alternate_urls`` sync) also reconciles
+  memberships against the local ``TeamCredentialStore``:
+
+    * inserts new entries for memberships not yet stored (reusing
+      the active credential's token + URL + caPem -- v0.7.0 tokens
+      cover every team the user is in);
+    * updates ``label`` (server-side team rename) and ``altUrls``
+      on existing entries;
+    * drops entries the server no longer reports (operator ran
+      ``vezir team remove-member``).
+
+  Triggers on every sessions-tab refresh; no kill+relaunch needed.
+  The picker dropdown re-renders via a new ``onTeamsChanged``
+  callback hoisted up to ``MainActivity``.
+
 ## 0.5.0 — vezir 0.7.0 compatibility (X-Team-Id + memberships)
 
 This release tracks the breaking server change in vezir 0.7.0.  The

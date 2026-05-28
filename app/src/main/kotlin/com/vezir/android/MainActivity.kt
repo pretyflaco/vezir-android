@@ -342,6 +342,15 @@ private fun AppRoot() {
                 teams = teams,
                 activeTeamId = teamStore.activeId(),
                 onSwitchTeam = { switchToTeam(it) },
+                onTeamsChanged = {
+                    // /api/me discovered new/removed memberships; reload
+                    // the team list so the picker updates without a kill+
+                    // relaunch.  The active team itself may also have
+                    // been renamed, so refresh the label too.
+                    teams = teamStore.loadAll()
+                    val active = teamStore.getActive()
+                    activeTeamLabel = active?.label?.ifBlank { active.id }
+                },
                 onSessionClick = { sessionId ->
                     push(Screen.SessionDetail(sessionId))
                 },
