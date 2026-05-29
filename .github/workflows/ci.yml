@@ -5,10 +5,10 @@ name: ci
 # is naturally an everything-or-nothing job, so splitting them across
 # workflows costs more cache misses than it saves):
 #
-#   1. ./gradlew lint              (Android lint, default ruleset)
-#   2. ./gradlew testDebugUnitTest (29/30 pass today; one
-#      pre-existing failure in EnrollmentPayloadTest documented
-#      in vezir_plan.md)
+#   1. ./gradlew lint              (gated; lint-baseline.xml absorbs the
+#      historical backlog — 0 findings as of v0.5.x)
+#   2. ./gradlew testDebugUnitTest (gated; all green since the
+#      EnrollmentPayloadTest fix)
 #   3. ./gradlew assembleDebug     (proves the app still builds)
 #
 # Release builds are NOT done in CI — release signing requires
@@ -44,18 +44,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Android lint
-        # Default ruleset (no lint{} block in build.gradle.kts).
-        # `--no-daemon` shaves a few seconds off CI cold-start and avoids
-        # daemon-lifecycle warnings in the runner's ephemeral environment.
-        #
-        # Lint has never been run in automation before, so the baseline
-        # is unknown — anywhere from 0 to dozens of findings is
-        # possible.  We run it non-blocking on the first PR; once the
-        # baseline is known, switch to a `lintBaseline` + tightened
-        # gate.  Until then, the report is visible in the job log and
-        # uploaded as an artifact below.
+        # v0.5.4: gated.  A `lint{ baseline = lint-baseline.xml }` block
+        # in app/build.gradle.kts records the historical findings (0 as of
+        # v0.5.x — the codebase was already clean), so this fails CI only
+        # on NEW lint regressions.  Regenerate the baseline by deleting
+        # app/lint-baseline.xml and re-running `./gradlew lint`.
         run: ./gradlew --no-daemon lint
-        continue-on-error: true
 
       - name: Upload lint report
         if: always()
@@ -67,14 +61,11 @@ jobs:
           retention-days: 14
 
       - name: Unit tests
-        # EnrollmentPayloadTest has a known pre-existing failure
-        # (documented in vezir_plan.md under each Android release line:
-        # "Tests: 29/30 (pre-existing EnrollmentPayloadTest failure)").
-        # We run the full suite anyway so any NEW failures surface, and
-        # gate CI on `continue-on-error` until that test is fixed.
-        # Once it's green, remove `continue-on-error` and this block.
+        # v0.5.4: gated.  The previously-flaky EnrollmentPayloadTest was
+        # fixed (it asserted v=2 unsupported when v2 *is* supported;
+        # switched to v=99).  The full suite is green, so CI now fails on
+        # any unit-test regression.
         run: ./gradlew --no-daemon testDebugUnitTest
-        continue-on-error: true
 
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug

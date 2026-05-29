@@ -27,8 +27,8 @@ android {
         // inspection notes in vezir_plan.md).
         minSdk = 29
         targetSdk = 35
-        versionCode = 27
-        versionName = "0.5.3"
+        versionCode = 28
+        versionName = "0.5.4"
 
         // Hard cap on recording duration. v1 = 3 hours, per plan §18.
         // Capture service reads this from BuildConfig at runtime.
@@ -85,6 +85,19 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    lint {
+        // Baseline records all findings present as of v0.5.x so CI can
+        // gate on NEW lint regressions (continue-on-error flipped off in
+        // .github/workflows/ci.yml) without first paying down the entire
+        // historical backlog.  Regenerate with:
+        //   ./gradlew lint  (after deleting lint-baseline.xml)
+        baseline = file("lint-baseline.xml")
+        // A genuinely broken build config should still fail; warnings are
+        // baselined, not ignored.
+        abortOnError = true
+        warningsAsErrors = false
     }
 
     packaging {
