@@ -27,8 +27,8 @@ android {
         // inspection notes in vezir_plan.md).
         minSdk = 29
         targetSdk = 35
-        versionCode = 28
-        versionName = "0.5.4"
+        versionCode = 29
+        versionName = "0.6.0"
 
         // Hard cap on recording duration. v1 = 3 hours, per plan §18.
         // Capture service reads this from BuildConfig at runtime.
@@ -163,4 +163,6 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Real org.json impl for JVM unit tests (the android.jar stub throws).
+    testImplementation("org.json:json:20240303")
 }

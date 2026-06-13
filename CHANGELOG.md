@@ -15,6 +15,58 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.6.0 — nostr (Amber) + Google sign-in
+
+Brings the app to parity with vezir 0.8.0's identity sign-in: instead of
+pasting a `vzr_` token, members sign in with **Amber** (their Nostr
+signer) or their **`@blinkbtc.com` Google account**.  Both yield a
+short-lived session JWT that's used exactly like the old token
+(`Authorization: Bearer`), so the entire networking layer is unchanged.
+
+### Added
+
+- **Sign in with Amber (NIP-55).**  A new `LoginScreen` launches the
+  local Nostr signer via `nostrsigner:` Android intents — `get_public_key`
+  then `sign_event`.  The app builds an unsigned **NIP-98** event (kind
+  27235, `u`/`method` tags) and computes its id locally
+  (`auth/Nip98Event.kt`, byte-identical to the server's canonical form);
+  Amber Schnorr-signs it; the signed event is base64'd and POSTed to
+  `/api/auth/nostr/login` (`auth/NostrLoginApi.kt`) for a session JWT.
+  No private key ever touches the app.  Handles signers returning either
+  the full signed event or just the 128-hex signature, and decodes an
+  `npub` result to hex if needed (`auth/Bech32.kt`).
+- **Sign in with Google (`@blinkbtc.com`).**  OAuth 2.0 Device
+  Authorization Grant via vezir (`auth/GoogleLoginApi.kt`): the app shows
+  the user a code, opens the verification URL in a browser, and polls
+  `/api/auth/google/device/poll` until the server returns a JWT.  The
+  OAuth client secret stays on the server; the app only polls vezir.
+- **Unified post-login discovery** (`auth/SessionDiscovery.kt`): every
+  sign-in path (Amber, Google, and the legacy token/QR enrollment) now
+  funnels through one helper that calls `/api/me` and creates a
+  `TeamCredential` per membership.
+
+### Changed
+
+- First-run and **Sign out** now land on the new `LoginScreen`; the old
+  token/QR enrollment is kept as **Advanced: enter a token / scan QR**.
+  `vzr_` tokens still work and are intended for machine/CI or advanced use.
+- `AndroidManifest.xml`: added a `<queries>` block (`nostrsigner` + `https`
+  schemes) for Android 11+/targetSdk-35 package visibility, so the app can
+  detect/launch Amber and open the Google verification page.
+
+### Requires
+
+- vezir server **0.8.0+** (the `/api/auth/nostr/login` and
+  `/api/auth/google/*` endpoints).  Token/QR enrollment still works
+  against any server the previous client supported.
+
+### Notes
+
+- Sessions are short-lived (~24 h).  When a session expires, sign in
+  again from **Settings → Sign out** (or add the team again); re-login
+  with the same identity refreshes the stored token in place.  Automatic
+  401→re-login routing is deferred to a later release.
+
 ## 0.5.3 — team UUID keys (slug-rename safe)
 
 ### Changed
