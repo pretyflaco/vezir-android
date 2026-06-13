@@ -24,6 +24,23 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <!-- Package visibility (Android 11+/targetSdk 35): so we can detect and
+         launch a NIP-55 signer (Amber) via the `nostrsigner:` scheme, and
+         open the Google device-code page in a browser.  Without these the
+         OS hides those activities from queryIntentActivities/resolve. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="nostrsigner" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".VezirApp"
         android:allowBackup="false"

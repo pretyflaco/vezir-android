@@ -24,14 +24,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
-import com.vezir.android.data.TeamCredential
 import com.vezir.android.data.TeamCredentialStore
-import com.vezir.android.net.MeApi
-import com.vezir.android.net.SessionApi
 import com.vezir.android.ui.ArtifactViewerScreen
 import com.vezir.android.ui.BottomNavBar
 import com.vezir.android.ui.ImportScreen
 import com.vezir.android.ui.LabelScreen
+import com.vezir.android.ui.LoginScreen
 import com.vezir.android.ui.QrScanScreen
 import com.vezir.android.ui.RecordScreen
 import com.vezir.android.ui.SessionDetailScreen
@@ -71,8 +69,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private const val DEFAULT_SERVER_URL = "https://vezir.twentyone.ist"
+
 private sealed class Screen {
     object Splash : Screen()
+    object Login : Screen()
     object Setup : Screen()
     object QrScan : Screen()
     object Record : Screen()
@@ -119,39 +120,15 @@ private fun AppRoot() {
             val token = prefs.token ?: return@LaunchedEffect
             val caPem = prefs.caPem
             try {
-                val api = MeApi(url, token, caPem)
-                val result = api.getMe()
-                if (result is SessionApi.Result.Ok) {
-                    val me = result.data
-                    if (me.memberships.isEmpty()) {
-                        Log.w("Vezir", "Migration deferred: token has no team memberships")
-                        return@LaunchedEffect
-                    }
-                    me.memberships.forEachIndexed { idx, mem ->
-                        teamStore.addOrUpdate(
-                            TeamCredential(
-                                id = mem.team_id,
-                                url = url,
-                                token = token,
-                                caPem = caPem,
-                                label = mem.team_name,
-                                github = me.github,
-                                isAdmin = me.is_admin,
-                                altUrls = me.alternate_urls,
-                            ),
-                            activate = (idx == 0),
-                        )
-                    }
+                val outcome = com.vezir.android.auth.SessionDiscovery
+                    .discoverAndStore(teamStore, url, token, caPem)
+                if (outcome.teamCount > 0) {
                     prefs.clearLegacyCredentials()
-                    val first = me.memberships.first()
-                    activeTeamLabel = first.team_name
+                    activeTeamLabel = outcome.activeLabel
                     teams = teamStore.loadAll()
-                    Log.i(
-                        "Vezir",
-                        "Migrated legacy credentials to ${me.memberships.size} team(s)",
-                    )
+                    Log.i("Vezir", "Migrated legacy credentials to ${outcome.teamCount} team(s)")
                 } else {
-                    Log.w("Vezir", "Migration deferred: /api/me failed")
+                    Log.w("Vezir", "Migration deferred: no memberships / /api/me failed")
                 }
             } catch (e: Exception) {
                 Log.w("Vezir", "Migration deferred: ${e.message}")
@@ -227,51 +204,45 @@ private fun AppRoot() {
             Screen.Splash -> SplashScreen(
                 onDone = {
                     replaceTop(
-                        if (prefs.isConfigured()) Screen.Record else Screen.Setup,
+                        if (prefs.isConfigured()) Screen.Record else Screen.Login,
                     )
                 },
+            )
+            Screen.Login -> LoginScreen(
+                defaultUrl = teamStore.getActive()?.url ?: DEFAULT_SERVER_URL,
+                onLoggedIn = { url, jwt ->
+                    scope.launch {
+                        val outcome = com.vezir.android.auth.SessionDiscovery
+                            .discoverAndStore(teamStore, url, jwt, caPem = null)
+                        if (outcome.teamCount > 0) {
+                            prefs.clearLegacyCredentials()
+                            activeTeamLabel = outcome.activeLabel
+                            teams = teamStore.loadAll()
+                            replaceTop(Screen.Record)
+                        }
+                        // If no memberships, LoginScreen keeps its own status;
+                        // stay on Login so the user can retry / contact admin.
+                    }
+                },
+                onUseToken = { push(Screen.Setup) },
             )
             Screen.Setup -> SetupScreen(
                 prefs = prefs,
                 onConfigured = {
-                    // After enrollment, discover team memberships via /api/me.
-                    // v0.5.0: returns a list -- one TeamCredential per
-                    // membership, all sharing the same token + URL.  The
-                    // first becomes active; user can switch via the
-                    // bottom-bar team picker.
+                    // After token/QR enrollment, discover team memberships
+                    // via /api/me using the shared SessionDiscovery helper
+                    // (same path the Amber/Google sign-in flows use).
                     scope.launch {
                         val url = prefs.serverUrl
                         val token = prefs.token
                         val caPem = prefs.caPem
                         if (url != null && token != null) {
-                            try {
-                                val api = MeApi(url, token, caPem)
-                                val result = api.getMe()
-                                if (result is SessionApi.Result.Ok) {
-                                    val me = result.data
-                                    me.memberships.forEachIndexed { idx, mem ->
-                                        teamStore.addOrUpdate(
-                                            TeamCredential(
-                                                id = mem.team_id,
-                                                url = url,
-                                                token = token,
-                                                caPem = caPem,
-                                                label = mem.team_name,
-                                                github = me.github,
-                                                isAdmin = me.is_admin,
-                                                altUrls = me.alternate_urls,
-                                            ),
-                                            activate = (idx == 0),
-                                        )
-                                    }
-                                    if (me.memberships.isNotEmpty()) {
-                                        prefs.clearLegacyCredentials()
-                                        activeTeamLabel = me.memberships.first().team_name
-                                        teams = teamStore.loadAll()
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                // /api/me failed -- keep legacy credentials
+                            val outcome = com.vezir.android.auth.SessionDiscovery
+                                .discoverAndStore(teamStore, url, token, caPem)
+                            if (outcome.teamCount > 0) {
+                                prefs.clearLegacyCredentials()
+                                activeTeamLabel = outcome.activeLabel
+                                teams = teamStore.loadAll()
                             }
                         }
                     }
@@ -377,7 +348,7 @@ private fun AppRoot() {
                 onImport = { push(Screen.Import) },
                 onSignOut = {
                     prefs.clear()
-                    replaceTop(Screen.Setup)
+                    replaceTop(Screen.Login)
                 },
                 onAddTeam = {
                     push(Screen.Setup)
