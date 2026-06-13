@@ -519,8 +519,7 @@ browser needed for any post-upload workflow.
 
   Note: nostr-vpn does not ship a MagicDNS-equivalent, so the IP is the
   only addressable endpoint.  If the tunnel IP changes, both this file
-  and the [team onboarding wiki](https://github.com/blinkbitcoin/blink-wip/wiki/pretyflaco----2026-05-21-Vezir-Onboarding-with-nostr-vpn)
-  need updating.
+  and the team onboarding docs need updating.
 
 ## 0.1.4 — auto-label + sync opt-out Switches ([release](https://github.com/pretyflaco/vezir-android/releases/tag/v0.1.4))
 

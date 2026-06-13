@@ -9,95 +9,93 @@
 
 # vezir-android
 
-Android thin client for [Vezir](https://github.com/pretyflaco/vezir).
-
-Records meeting audio on the phone (system playback + microphone),
-encodes it to OGG/Opus on-device, and uploads to a self-hosted Vezir
-server. The existing millet (formerly meetscribe) pipeline on the server handles
-transcription, diarization, summarization, PDF generation, and sync to
-your meetings repo.
+Android client for [Vezir](https://github.com/pretyflaco/vezir) —
+self-hosted team intelligence. Record a meeting on the phone (system audio
++ microphone), encode to OGG/Opus on-device, and upload to your Vezir
+server over plain HTTPS. The server transcribes, diarizes, summarizes,
+labels speakers, and syncs to your team archive. Sign in with **Nostr** or
+**Google** — no VPN, no token pasting.
 
 ## Status
 
-Alpha (0.2.5). Sideload only; no Play Store. End-to-end validated
-against a Blink dev-sync sandbox session: phone records a Google Meet
-meeting via Android `MediaProjection` + microphone, encodes to OGG/Opus
-at 16 kHz mono / 24 kbps, uploads to a Vezir server over nvpn / Tailscale,
-and the server's worker produces a usable transcript + summary.
-Full release history in [`CHANGELOG.md`](CHANGELOG.md).
+Alpha (**0.6.2**). Sideload only; no Play Store. Full history in
+[`CHANGELOG.md`](CHANGELOG.md).
+
+## Sign in
+
+On first launch, point the app at your server (e.g.
+`https://vezir.twentyone.ist`) and pick one:
+
+- **Sign in with Nostr** — uses a local NIP-55 signer
+  ([Amber](https://github.com/greenart7c3/Amber/releases)) holding your
+  key. The app shows the system signer chooser; approve `get_public_key`
+  then the login signature in Amber. Your key never touches the app.
+- **Sign in with Google** — OAuth device flow for a `@workspace-domain`
+  account: the app shows a code and opens Google in a browser (usually
+  pre-filled — just tap Continue). The code is also copied to your
+  clipboard as a fallback.
+
+Either way the server mints a short-lived **session JWT** (~24h), stored in
+`EncryptedSharedPreferences`. An admin must authorize your `npub` / email
+on the server first (`vezir npub add` / `vezir google add`); you'll then
+auto-discover every team you belong to and can switch between them in a
+dropdown.
+
+> "Advanced: enter a token / scan QR" remains for machine/CI or legacy
+> `vzr_`-token use.
 
 ## What it does
 
 | Action | How |
 |---|---|
-| Enroll device | Scan the QR rendered by the server's `/admin/enroll` page, or paste the JSON payload manually. |
-| Record meeting audio | Tap **Start recording**. Android shows the `MediaProjection` consent prompt. The app captures system playback (apps using `USAGE_MEDIA`/`USAGE_GAME`/`USAGE_UNKNOWN`) + microphone, mixes them with soft-clip, and encodes Opus. |
-| Stop | Tap **Stop**, or use the persistent notification's Stop action. 3h hard cap. |
-| Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg` — visible in every file manager and audio app. |
-| Pick summarization preset | Dropdown above the record button. Three options — **High Quality** (Sonnet 4.6), **Confidential** (DeepSeek V4 Pro via Tinfoil TEE, default on Android), **Alternative** (Kimi K2.6). Choice sticks across launches; sent to the server as the multipart form field `summary_preset`. |
-| Auto-label opt-out | **Auto-label speakers** Switch (default on). When off, the server skips voiceprint matching and the session always routes to manual labeling. Sticky across launches. |
-| Sync opt-out | **Sync to git** Switch (default on). When off, the session reaches `done (local-only)` on the dashboard — artifacts are on the vezir server but never pushed to the destination repo. Retroactively syncable via a "Sync now" button on the session detail page. Sticky across launches. |
-| Upload | Tap **Upload to vezir**. OkHttp multipart `POST /upload` with progress, retries on connection / 5xx, restart-from-byte-0 on retry. Polls `/api/sessions/{id}` until terminal. |
-| Open dashboard | One-tap to the existing browser dashboard via `/login?token=...&next=/s/<id>`. |
-| Import existing recording | SAF picker → `MediaExtractor` → `MediaCodec` decode → resample → Opus. Samsung screen-recording MP4s, voice memos, prior Vezir OGGs all work. OGG inputs are stream-copied without re-encode. |
-
-## What it does not do (yet)
-
-- Native labelling UI; the server's web UI is used for that. Open the dashboard from the app.
-- Resumable / chunked upload. Current retries restart from byte 0.
-- Capture from apps that route audio through Android's communication channel (typically Signal calls, sometimes Zoom). The OS does not expose those streams to third-party recorders. The app detects 10 s of silent playback and surfaces a hint that we have likely fallen back to mic-only.
+| Sign in | Nostr (Amber) or Google, per above. |
+| Record meeting | **Start recording** → Android `MediaProjection` consent → captures system playback + mic, mixes with soft-clip, encodes Opus. 3h hard cap. |
+| Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg`. |
+| Summarization preset | Dropdown: **High Quality** (Sonnet), **Confidential** (TEE; default on Android), **Alternative**. Sent as `summary_preset`. |
+| Auto-label / Sync / Personal | Switches on the record screen (sticky, except Personal which resets per launch), mirroring the desktop toggles. |
+| Upload | Resumable multipart upload with progress; polls `/api/sessions/{id}` to completion. |
+| Browse | Sessions tab: status, transcripts, summaries, artifacts. |
+| Import existing recording | SAF picker → decode → resample → Opus. Screen recordings, voice memos, prior Vezir OGGs all work. |
 
 ## Requirements
 
-- Android 10 (API 29) or newer.
-- A reachable Vezir server.  Minimum supported is **≥ 0.1.2** (for the
-  `/admin/enroll` device-enrollment endpoint and basic upload), but
-  **≥ 0.1.11** is recommended so the `summary_preset`, `auto_label`,
-  and `sync` form fields this app sends are actually honored.
-  Older servers silently ignore the new fields and behave as today
-  (server-default backend, always auto-label, always sync).
-- A token issued by the operator: `vezir token issue --github <handle>`.
-- A private-mesh VPN reachable from the phone to the server.  Two
-  options are documented and the shipped cleartext allow-list covers
-  both for muscle:
-  - **Tailscale**: `muscle.tail178bd.ts.net` and the matching
-    Tailscale IP `100.107.34.79`.  Install the Tailscale app from
-    Play Store / F-Droid and join the tailnet.
-  - **nostr-vpn**: muscle's tunnel IP `10.44.141.239` (added in
-    v0.1.5).  Install
-    [the nostr-vpn Android APK](https://github.com/mmalmi/nostr-vpn/releases/latest)
-    and import the team's invite (see the
-    [team onboarding wiki](https://github.com/blinkbitcoin/blink-wip/wiki/pretyflaco----2026-05-21-Vezir-Onboarding-with-nostr-vpn)).
-  - To add a different server, edit
-    `app/src/main/res/xml/network_security_config.xml` and rebuild.
+- Android 10 (API 29)+.
+- A reachable Vezir server, **≥ 0.8.0** (for the Nostr/Google sign-in
+  endpoints). 0.8.3+ recommended (Google device-flow DNS resilience).
+- Your identity authorized on the server (`npub` or `@domain` email) and a
+  team membership — ask your operator.
+- For Nostr sign-in: a NIP-55 signer
+  ([Amber](https://github.com/greenart7c3/Amber/releases)) on the phone
+  holding your key.
+- **No VPN.** The server is reached over ordinary HTTPS.
 
 ## Install
 
-The signed APK is published with each GitHub Release. Sideload it.
+The signed APK is attached to each [GitHub Release](https://github.com/pretyflaco/vezir-android/releases/latest).
 
 ```bash
-adb install -r vezir-android-0.1.5.apk
+adb install -r vezir-android-0.6.2.apk
 ```
 
-Or open the APK in your phone's file manager and let Android install it from "unknown sources".
+Or open the APK in your file manager and allow install from "unknown
+sources". Releases use the same signing key, so upgrades install in place.
 
 ## Build
 
-The Gradle wrapper jar is checked in, so:
-
 ```bash
-./gradlew assembleDebug         # debug APK at app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease       # signed release APK (see Signing below)
-./gradlew test                  # JVM unit tests (no emulator)
+./gradlew assembleDebug         # debug APK
+./gradlew assembleRelease       # signed release (see Signing)
+./gradlew testDebugUnitTest     # JVM unit tests (no emulator)
+./gradlew lintDebug
 ```
 
-Build host requirements: JDK 17, Android SDK with `platforms/android-35`
-and `build-tools/35.0.0` installed.
+Build host: JDK 17, Android SDK with `platforms/android-35` +
+`build-tools/35.0.0`.
 
-### Signing the release build
+### Signing
 
-The release config reads keystore parameters from `keystore.properties`
-(gitignored). Create one alongside `build.gradle.kts`:
+The release config reads `keystore.properties` (gitignored) next to
+`build.gradle.kts`:
 
 ```properties
 storeFile=/absolute/path/to/vezir-release.jks
@@ -106,49 +104,32 @@ keyAlias=vezir
 keyPassword=...
 ```
 
-Generate a fresh keystore once:
-
-```bash
-keytool -genkey -v -keystore vezir-release.jks \
-  -keyalg RSA -keysize 4096 -validity 10000 -alias vezir
-```
-
-Without `keystore.properties`, `assembleRelease` falls back to the debug keystore so CI builds still succeed.
-
-## Onboarding flow
-
-On the server (operator):
-
-```bash
-vezir token issue --github <handle>
-```
-
-Open `http://<server>:8000/admin/enroll` in a browser already signed
-in to Vezir. Paste the URL + token, hit **Generate QR**.
-
-On the phone:
-
-1. Open Vezir.
-2. **Scan enrollment QR**, point at the screen.
-3. **Save and continue**.
-
-Manual paste of either the JSON payload (`{"v":1,"url":"...","token":"..."}`)
-or the URL + token directly works as a fallback when no camera is
-available.
+Without it, `assembleRelease` falls back to the debug keystore so CI/clones
+still build. Generate a keystore once with `keytool -genkey -v -keystore
+vezir-release.jks -keyalg RSA -keysize 4096 -validity 10000 -alias vezir`.
 
 ## Security posture
 
-- Server URL and token are stored in `EncryptedSharedPreferences`
-  (AES-256-GCM via Android Keystore). The pref file
-  `vezir_secure_prefs.xml` is excluded from cloud backup and device
-  transfer.
-- HTTPS by default. Cleartext HTTP is allowed only for the hosts listed
-  in `network_security_config.xml` at build time.
-- The recording itself is stored unencrypted in `Music/Vezir/`. Treat
-  the phone's storage with the same trust posture you treat your laptop's
-  `~/meet-recordings/`.
-- Tokens issued by the server are bearer tokens. Lose your phone, run
-  `vezir token revoke --github <handle>` on the server.
+- Server URL + session JWT stored in `EncryptedSharedPreferences`
+  (AES-256-GCM via Android Keystore); excluded from cloud backup.
+- The session is short-lived (~24h); your Nostr key stays in Amber and
+  never touches the app. Google's client secret stays on the server.
+- HTTPS only against the public server cert; an optional internal CA
+  (legacy enrollment) is trusted *in addition to* the public store.
+- Recordings are stored unencrypted in `Music/Vezir/` — treat the phone's
+  storage accordingly.
+
+## How it talks to the server
+
+100% Jetpack Compose + OkHttp (no Retrofit). NIP-55 sign-in uses
+`nostrsigner:` Android intents (`auth/AmberSigner.kt`), builds a NIP-98
+event whose id is computed byte-identically to the server
+(`auth/Nip98Event.kt`), and posts it to `/api/auth/nostr/login`. Google uses
+the device grant via the server (`auth/GoogleLoginApi.kt`). All sign-in
+paths converge on the same `/api/me` team discovery.
+
+See the [Vezir README](https://github.com/pretyflaco/vezir#sign-in--access)
+for the end-to-end team setup.
 
 ## License
 
