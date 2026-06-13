@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -62,6 +63,20 @@ fun LoginScreen(
     // pending unsigned event awaiting the sign launcher's result.
     var signerPackage by remember { mutableStateOf<String?>(null) }
     var pendingUnsigned by remember { mutableStateOf<Nip98Event.Unsigned?>(null) }
+
+    // Google device-code state, shown in a copyable card while polling.
+    var googleCode by remember { mutableStateOf<String?>(null) }
+    var googleVerifyUrl by remember { mutableStateOf<String?>(null) }
+
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    fun openUrl(u: String) {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
 
     fun postSignedEvent(signedJson: String) {
         scope.launch {
@@ -144,8 +159,12 @@ fun LoginScreen(
             return
         }
         busy = true
-        status = "Opening Amber…"
-        loginLauncher.launch(AmberSigner.loginIntent(AmberSigner.installedSignerPackage(context)))
+        status = "Choose your Nostr signer…"
+        // No forced package: let Android show the system chooser among all
+        // installed NIP-55 signers (Amber, etc.).  The signer the user picks
+        // is captured from the login result's `package` extra and reused for
+        // the sign_event leg, so the whole flow stays with their choice.
+        loginLauncher.launch(AmberSigner.loginIntent(signerPackage = null))
     }
 
     fun startGoogle() {
@@ -163,14 +182,15 @@ fun LoginScreen(
             when (val start = api.deviceStart()) {
                 is GoogleLoginApi.Result.Ok -> {
                     val d = start.data
-                    val verifyUrl = d.verification_url ?: "https://www.google.com/device"
-                    status = "Enter code ${d.user_code} at $verifyUrl — opening browser…"
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(verifyUrl))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }
+                    // Prefer the complete URL (code embedded) so the page is
+                    // pre-filled; keep the bare URL for the "Open page" button
+                    // and the displayed code as a fallback.
+                    val bareUrl = d.verification_url ?: "https://www.google.com/device"
+                    val openUrlTarget = d.verification_url_complete ?: bareUrl
+                    googleCode = d.user_code
+                    googleVerifyUrl = bareUrl
+                    status = "Approve in the browser as your @blinkbtc.com account…"
+                    openUrl(openUrlTarget)
                     when (
                         val poll = api.pollUntilDone(
                             deviceCode = d.device_code,
@@ -179,13 +199,18 @@ fun LoginScreen(
                         )
                     ) {
                         is GoogleLoginApi.Result.Ok -> {
+                            googleCode = null
                             status = "Signed in as ${poll.data.github} (${poll.data.email})."
                             onLoggedIn(url, poll.data.session_jwt)
                         }
-                        is GoogleLoginApi.Result.HttpError ->
+                        is GoogleLoginApi.Result.HttpError -> {
+                            googleCode = null
                             status = "Google sign-in failed (${poll.code}): ${poll.message}"
-                        is GoogleLoginApi.Result.NetworkError ->
+                        }
+                        is GoogleLoginApi.Result.NetworkError -> {
+                            googleCode = null
                             status = "Network error: ${poll.cause.message}"
+                        }
                     }
                 }
                 is GoogleLoginApi.Result.HttpError ->
@@ -227,6 +252,44 @@ fun LoginScreen(
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Sign in with Google") }
+
+        // While a Google device code is live, show it prominently with
+        // copy + open-page actions (the verification page is normally
+        // pre-filled, but this is the fallback if the user needs the code).
+        val code = googleCode
+        if (code != null) {
+            androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "If the page asks for a code, enter:",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        code,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    )
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Copy code") }
+                        OutlinedButton(
+                            onClick = { googleVerifyUrl?.let { openUrl(it) } },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Open page") }
+                    }
+                }
+            }
+        }
 
         HorizontalDivider()
 

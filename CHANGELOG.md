@@ -15,6 +15,30 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.6.1 — sign-in UX: signer chooser + pre-filled Google code
+
+Polish on the 0.6.0 sign-in flows from on-device testing.
+
+### Fixed
+
+- **Amber sign-in now shows the system signer chooser.**  0.6.0 force-
+  targeted the *first* installed NIP-55 signer, so a secondary signer
+  (e.g. "nowser") could hijack the flow.  The `get_public_key` intent now
+  launches with **no forced package**, so Android shows the picker; the
+  signer the user selects (from the login result's `package`) is reused
+  for the `sign_event` leg.
+- **Google sign-in no longer requires typing the code.**  Using the
+  server's new `verification_url_complete` (vezir 0.8.1), the app opens a
+  **pre-filled** Google verification page.  The code is also shown in a
+  card with **Copy code** / **Open page** buttons as a fallback (0.6.0
+  buried it in non-copyable status text).
+
+### Requires
+
+- vezir server **0.8.1+** for the pre-filled Google URL
+  (`verification_url_complete`).  Against 0.8.0 the app falls back to the
+  bare verification URL + the (now copyable) code.
+
 ## 0.6.0 — nostr (Amber) + Google sign-in
 
 Brings the app to parity with vezir 0.8.0's identity sign-in: instead of
