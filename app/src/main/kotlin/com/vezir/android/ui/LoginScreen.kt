@@ -189,7 +189,13 @@ fun LoginScreen(
                     val openUrlTarget = d.verification_url_complete ?: bareUrl
                     googleCode = d.user_code
                     googleVerifyUrl = bareUrl
-                    status = "Approve in the browser as your @blinkbtc.com account…"
+                    // Pre-copy the code to the clipboard so that if Google's
+                    // page doesn't pre-fill it (or the user lands on the
+                    // manual-entry page), it's ready to paste — no bouncing
+                    // back to vezir.  (The card also shows it with a Copy
+                    // button.)
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(d.user_code))
+                    status = "Code copied. Approve in the browser as your @blinkbtc.com account…"
                     openUrl(openUrlTarget)
                     when (
                         val poll = api.pollUntilDone(
@@ -254,8 +260,9 @@ fun LoginScreen(
         ) { Text("Sign in with Google") }
 
         // While a Google device code is live, show it prominently with
-        // copy + open-page actions (the verification page is normally
-        // pre-filled, but this is the fallback if the user needs the code).
+        // copy + open-page actions.  Google normally pre-fills the code and
+        // just asks you to tap Continue; this card (and the auto-copied code)
+        // is the fallback if it asks you to enter or confirm it.
         val code = googleCode
         if (code != null) {
             androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
@@ -264,7 +271,9 @@ fun LoginScreen(
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "If the page asks for a code, enter:",
+                        "Google should fill this code in for you — just tap " +
+                            "Continue. If it asks, the code is copied and ready " +
+                            "to paste:",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
