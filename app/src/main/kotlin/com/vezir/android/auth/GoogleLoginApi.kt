@@ -53,6 +53,9 @@ class GoogleLoginApi(
         val device_code: String,
         val user_code: String,
         val verification_url: String? = null,
+        // URL with the user_code embedded (server 0.8.1+), so we can open a
+        // pre-filled verification page — no manual code typing.
+        val verification_url_complete: String? = null,
         val expires_in: Long? = null,
         val interval: Int = 5,
         val allowed_domain: String? = null,

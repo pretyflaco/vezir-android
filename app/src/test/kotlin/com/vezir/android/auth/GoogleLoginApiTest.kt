@@ -44,6 +44,21 @@ class GoogleLoginApiTest {
         assertEquals("dc", d.device_code)
         assertEquals(5, d.interval)
         assertEquals("https://www.google.com/device", d.verification_url)
+        // Missing on older servers -> null (we fall back to verification_url).
+        org.junit.Assert.assertNull(d.verification_url_complete)
+    }
+
+    @Test
+    fun deviceStart_parsesVerificationUrlComplete() {
+        // server 0.8.1+ surfaces the pre-filled URL with the code embedded.
+        val d = json.decodeFromString(
+            GoogleLoginApi.DeviceStart.serializer(),
+            """{"device_code":"dc","user_code":"JLZ-TTC-KHD","verification_url":"https://www.google.com/device","verification_url_complete":"https://www.google.com/device?user_code=JLZ-TTC-KHD","interval":5}""",
+        )
+        assertEquals(
+            "https://www.google.com/device?user_code=JLZ-TTC-KHD",
+            d.verification_url_complete,
+        )
     }
 
     @Test
