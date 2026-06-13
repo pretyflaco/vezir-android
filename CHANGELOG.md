@@ -15,6 +15,26 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.6.2 — Google sign-in: code ready to paste + clearer prompt
+
+More polish on Google sign-in from on-device testing.
+
+### Changed
+
+- **The device code is now auto-copied to the clipboard** when Google
+  sign-in starts, so if Google's page doesn't pre-fill it (or you land on
+  the manual-entry page) it's already there to paste — no bouncing back to
+  Vezir.  (The code card still shows it with a Copy button too.)
+- **Clearer prompt.**  Google normally pre-fills the code and just asks you
+  to tap **Continue** (it's a confirm step, not re-entry); the card now says
+  so instead of implying you must type it.
+
+### Notes
+
+- Best with vezir server **0.8.3+** (device-flow DNS resilience: the
+  occasional "could not reach Google to start sign-in" on the first tap is
+  retried server-side).
+
 ## 0.6.1 — sign-in UX: signer chooser + pre-filled Google code
 
 Polish on the 0.6.0 sign-in flows from on-device testing.
