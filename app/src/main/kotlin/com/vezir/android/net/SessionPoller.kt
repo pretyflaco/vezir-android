@@ -31,6 +31,14 @@ class SessionPoller(
         private val json = Json { ignoreUnknownKeys = true }
     }
 
+    /**
+     * Thrown out of [poll] when the server answers a status request with
+     * 401 — the session JWT has almost certainly expired mid-flow.  The
+     * collector surfaces this as a "please sign in again" prompt instead
+     * of polling forever (the pre-fix behaviour, which silently retried).
+     */
+    class AuthExpiredException : Exception("server returned 401; session likely expired")
+
     @Serializable
     data class SessionStatus(
         val id: String,
@@ -69,10 +77,15 @@ class SessionPoller(
             token, teamId,
         ).get().build()
         client.newCall(req).execute().use { resp ->
+            // 401 is terminal: the session expired. Surface it (don't
+            // swallow into a null + infinite silent retry).
+            if (resp.code == 401) throw AuthExpiredException()
             if (!resp.isSuccessful) return null
             val body = resp.body?.string() ?: return null
             json.decodeFromString(SessionStatus.serializer(), body)
         }
+    } catch (e: AuthExpiredException) {
+        throw e // propagate out of poll() to the collector
     } catch (_: IOException) {
         null
     } catch (_: Throwable) {

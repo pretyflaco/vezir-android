@@ -50,6 +50,13 @@ fun UploadScreen(
         val c = cred ?: return@LaunchedEffect
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
+            // Don't burn an upload on a session that's already expired:
+            // the server would 401 and the user would see a confusing
+            // failure at 100%. Check the JWT's exp claim up front.
+            if (com.vezir.android.auth.SessionExpiry.isExpired(c.token)) {
+                UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                return@LaunchedEffect
+            }
             val resilient = com.vezir.android.net.ResilientApi(
                 c.url, c.altUrls, c.token, c.id, c.caPem,
             )

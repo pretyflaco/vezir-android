@@ -15,6 +15,35 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.6.3 — handle expired session (no more silent 401 after upload)
+
+Fixes the `HTTP 401` some users hit at 100% upload, plus a related silent
+hang. The session JWT lasts 24h; nothing in the app noticed when it lapsed.
+
+### Fixed
+
+- **Expired session is detected before the upload starts.** If the JWT is
+  expired (or within 5 min of it), the upload screen now says *"Session
+  expired — please sign in again"* instead of streaming the whole file and
+  failing with a raw `HTTP 401` at 100%. The `exp` claim is read on-device
+  (no signature verification — that stays server-side).
+- **Status polling no longer hangs forever on 401.** `SessionPoller`
+  previously swallowed a 401 from `GET /api/sessions/{id}` and retried
+  silently, leaving the screen stuck at 100% / `polling`. It now surfaces
+  the expiry so you know to re-sign-in. *(This was the second failure mode
+  behind the same root cause.)*
+- **A 401 mid-upload** (resumable or legacy path) now shows the same
+  friendly "sign in again" message rather than `HTTP 401: Unauthorized`.
+
+### Notes
+
+- No server change required — works against any vezir server **≥ 0.8.0**.
+  Re-sign-in is a single Amber / Google prompt from the login screen; an
+  upload that already reached the server keeps processing and its artifacts
+  are reachable after re-login (Sessions tab / `vezir pull`).
+- There is still no automatic token refresh; a future release may add a
+  proactive re-auth prompt.
+
 ## 0.6.2 — Google sign-in: code ready to paste + clearer prompt
 
 More polish on Google sign-in from on-device testing.

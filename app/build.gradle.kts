@@ -27,8 +27,8 @@ android {
         // inspection notes in vezir_plan.md).
         minSdk = 29
         targetSdk = 35
-        versionCode = 31
-        versionName = "0.6.2"
+        versionCode = 32
+        versionName = "0.6.3"
 
         // Hard cap on recording duration. v1 = 3 hours, per plan §18.
         // Capture service reads this from BuildConfig at runtime.

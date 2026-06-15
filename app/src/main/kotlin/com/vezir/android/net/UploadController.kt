@@ -20,6 +20,9 @@ import kotlinx.coroutines.launch
  */
 object UploadController {
 
+    /** User-facing message for an expired/invalid session (HTTP 401). */
+    const val SESSION_EXPIRED_MESSAGE = "Session expired \u2014 please sign in again"
+
     enum class State { IDLE, UPLOADING, POLLING, DONE, ERROR }
 
     data class Snapshot(
@@ -51,6 +54,17 @@ object UploadController {
         job?.cancel()
         job = null
         _state.value = Snapshot()
+    }
+
+    /**
+     * Force an ERROR state from outside the upload coroutine — used by the
+     * UI to short-circuit a doomed upload when the session JWT is already
+     * expired, before any bytes leave the device.
+     */
+    fun setError(message: String) {
+        job?.cancel()
+        job = null
+        _state.value = Snapshot(state = State.ERROR, errorMessage = message)
     }
 
     /**
@@ -107,7 +121,8 @@ object UploadController {
                     is ResumableUploader.Outcome.HttpError -> {
                         _state.value = _state.value.copy(
                             state = State.ERROR,
-                            errorMessage = "HTTP ${o.code}: ${o.message}",
+                            errorMessage = if (o.code == 401) SESSION_EXPIRED_MESSAGE
+                            else "HTTP ${o.code}: ${o.message}",
                         )
                         return@launch
                     }
@@ -185,7 +200,8 @@ object UploadController {
             is Uploader.Outcome.HttpError -> {
                 _state.value = _state.value.copy(
                     state = State.ERROR,
-                    errorMessage = "HTTP ${outcome.code}: ${outcome.message}",
+                    errorMessage = if (outcome.code == 401) SESSION_EXPIRED_MESSAGE
+                    else "HTTP ${outcome.code}: ${outcome.message}",
                 )
             }
             is Uploader.Outcome.Failed -> {
@@ -202,14 +218,25 @@ object UploadController {
         sessionId: String, caPem: String? = null,
     ) {
         val poller = SessionPoller(baseUrl, token, teamId, caPem)
-        poller.poll(sessionId).collect { status ->
-            val terminal = status.status == "done" || status.status == "error"
+        try {
+            poller.poll(sessionId).collect { status ->
+                val terminal = status.status == "done" || status.status == "error"
+                _state.value = _state.value.copy(
+                    state = if (terminal) State.DONE else State.POLLING,
+                    serverStatus = status.status,
+                    serverError = status.error,
+                    summaryError = status.summary_error,
+                    syncError = status.sync_error,
+                )
+            }
+        } catch (_: SessionPoller.AuthExpiredException) {
+            // Upload succeeded, but the session expired before processing
+            // finished. Surface it instead of polling forever; the
+            // artifacts are safe on the server and reachable after
+            // re-login via the Sessions tab / `vezir pull`.
             _state.value = _state.value.copy(
-                state = if (terminal) State.DONE else State.POLLING,
-                serverStatus = status.status,
-                serverError = status.error,
-                summaryError = status.summary_error,
-                syncError = status.sync_error,
+                state = State.ERROR,
+                errorMessage = SESSION_EXPIRED_MESSAGE,
             )
         }
         // Flow completed on terminal status. If the loop exited without a
