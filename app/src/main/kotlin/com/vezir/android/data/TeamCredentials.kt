@@ -19,18 +19,37 @@ import kotlinx.serialization.json.Json
 data class TeamCredential(
     val id: String,           // team slug, e.g. "blink"
     val url: String,          // server URL
-    val token: String,        // bearer token
+    val token: String,        // bearer token / session access JWT
     val caPem: String? = null,// PEM CA cert from v2 enrollment
     val label: String = "",   // human-readable team name from /api/me
     val github: String? = null, // handle from /api/me
     val isAdmin: Boolean = false,
     val altUrls: List<String> = emptyList(),  // alternate server URLs for failover
+    // Rotating refresh-token session (vezir server >= 0.10.0).  All team
+    // entries created from one login share the same refresh token, since a
+    // server session is one family per login (not per team).  Null for
+    // legacy `vzr_` tokens and pre-0.7.0 logins; defaults keep older
+    // persisted JSON deserializable.
+    val refreshToken: String? = null,
+    val accessExpiresAt: Long = 0,  // epoch seconds; 0 = unknown
 )
+
+/**
+ * Minimal persistence seam the [TeamCredentialStore] needs.
+ *
+ * [Prefs] implements this over EncryptedSharedPreferences; tests supply a
+ * plain in-memory fake so the multi-team / refresh logic is unit-testable
+ * without Android (no Robolectric).
+ */
+interface TeamCredentialBacking {
+    var teamsJson: String?
+    var activeTeamId: String?
+}
 
 /**
  * In-memory + serialized team credential list with an active selection.
  */
-class TeamCredentialStore(private val prefs: Prefs) {
+class TeamCredentialStore(private val prefs: TeamCredentialBacking) {
 
     companion object {
         private val json = Json {
@@ -52,6 +71,41 @@ class TeamCredentialStore(private val prefs: Prefs) {
     /** Save the full list back to encrypted prefs. */
     fun saveAll(teams: List<TeamCredential>) {
         prefs.teamsJson = json.encodeToString(teams)
+    }
+
+    /**
+     * Apply a rotated access/refresh pair to every team entry that
+     * currently shares [oldToken].
+     *
+     * A vezir session is one family per login shared across all of a
+     * user's teams, so a single refresh must update every entry that was
+     * carrying the just-expired access token.  Entries with a different
+     * token (e.g. a separate `vzr_`-token team) are left untouched.
+     *
+     * Returns the number of entries updated.
+     */
+    fun applyRefreshedToken(
+        oldToken: String,
+        newToken: String,
+        newRefreshToken: String?,
+        accessExpiresAt: Long,
+    ): Int {
+        val teams = loadAll()
+        var updated = 0
+        val next = teams.map { t ->
+            if (t.token == oldToken) {
+                updated++
+                t.copy(
+                    token = newToken,
+                    refreshToken = newRefreshToken ?: t.refreshToken,
+                    accessExpiresAt = accessExpiresAt,
+                )
+            } else {
+                t
+            }
+        }
+        if (updated > 0) saveAll(next)
+        return updated
     }
 
     /** Get the active team id. */

@@ -15,7 +15,7 @@ import androidx.security.crypto.MasterKey
  * rules in `xml/backup_rules.xml` and `xml/data_extraction_rules.xml` can
  * target it precisely.
  */
-class Prefs(context: Context) {
+class Prefs(context: Context) : TeamCredentialBacking {
 
     private val prefs: SharedPreferences = run {
         val masterKey = MasterKey.Builder(context)
@@ -134,7 +134,7 @@ class Prefs(context: Context) {
     // ── Multi-team credentials (v0.3.0+) ──
 
     /** JSON-encoded list of [TeamCredential] entries. */
-    var teamsJson: String?
+    override var teamsJson: String?
         get() = prefs.getString(KEY_TEAMS_JSON, null)
         set(value) {
             prefs.edit().apply {
@@ -144,7 +144,7 @@ class Prefs(context: Context) {
         }
 
     /** Team slug of the currently active team. */
-    var activeTeamId: String?
+    override var activeTeamId: String?
         get() = prefs.getString(KEY_ACTIVE_TEAM_ID, null)
         set(value) {
             prefs.edit().apply {

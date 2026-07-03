@@ -30,6 +30,8 @@ object SessionDiscovery {
         url: String,
         token: String,
         caPem: String? = null,
+        refreshToken: String? = null,
+        accessExpiresIn: Long = 0,
     ): Outcome {
         val api = MeApi(url, token, caPem)
         val result = api.getMe()
@@ -42,6 +44,9 @@ object SessionDiscovery {
             Log.w("Vezir", "session discovery: identity has no team memberships")
             return Outcome(null, 0)
         }
+        val accessExpiresAt =
+            if (accessExpiresIn > 0) System.currentTimeMillis() / 1000 + accessExpiresIn else 0
+        val refresh = refreshToken?.ifEmpty { null }
         me.memberships.forEachIndexed { idx, mem ->
             store.addOrUpdate(
                 TeamCredential(
@@ -53,6 +58,8 @@ object SessionDiscovery {
                     github = me.github,
                     isAdmin = me.is_admin,
                     altUrls = me.alternate_urls,
+                    refreshToken = refresh,
+                    accessExpiresAt = accessExpiresAt,
                 ),
                 activate = (idx == 0),
             )

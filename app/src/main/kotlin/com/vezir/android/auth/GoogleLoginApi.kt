@@ -37,7 +37,9 @@ class GoogleLoginApi(
     }
 
     private val client: OkHttpClient = externalClient
-        ?: HttpClients.build(caPem, connectTimeoutSec = 15, readTimeoutSec = 30)
+        ?: HttpClients.build(
+            caPem, connectTimeoutSec = 15, readTimeoutSec = 30, refreshOn401 = false,
+        )
 
     private fun base() = baseUrl.trimEnd('/')
 
@@ -68,6 +70,11 @@ class GoogleLoginApi(
         val is_admin: Boolean = false,
         val email: String = "",
         val expires_in: Long = 0,
+        // Rotating refresh-token session (vezir server >= 0.10.0).  Absent
+        // (empty) against older servers.
+        val access_jwt: String = "",
+        val refresh_token: String = "",
+        val refresh_expires_in: Long = 0,
     )
 
     sealed class Result<out T> {

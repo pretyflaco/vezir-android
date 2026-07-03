@@ -53,17 +53,25 @@ fun UploadScreen(
             // Don't burn an upload on a session that's already expired:
             // the server would 401 and the user would see a confusing
             // failure at 100%. Check the JWT's exp claim up front.
-            if (com.vezir.android.auth.SessionExpiry.isExpired(c.token)) {
-                UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
-                return@LaunchedEffect
+            var token = c.token
+            if (com.vezir.android.auth.SessionExpiry.isExpired(token)) {
+                // Rotating sessions (server >= 0.10.0): try a silent refresh
+                // before giving up.  Falls through to the expired message
+                // only when there's no refresh token or the server rejects.
+                val refreshed = com.vezir.android.auth.TokenRefresher.refresh(token)
+                if (refreshed.isNullOrEmpty()) {
+                    UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                    return@LaunchedEffect
+                }
+                token = refreshed
             }
             val resilient = com.vezir.android.net.ResilientApi(
-                c.url, c.altUrls, c.token, c.id, c.caPem,
+                c.url, c.altUrls, token, c.id, c.caPem,
             )
             val uploadUrl = resilient.findReachableUrl() ?: c.url
             UploadController.startUpload(
                 baseUrl = uploadUrl,
-                token = c.token,
+                token = token,
                 teamId = c.id,
                 contentResolver = context.contentResolver,
                 contentUri = contentUri,

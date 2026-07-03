@@ -35,7 +35,9 @@ class NostrLoginApi(
     }
 
     private val client: OkHttpClient = externalClient
-        ?: HttpClients.build(caPem, connectTimeoutSec = 15, readTimeoutSec = 30)
+        ?: HttpClients.build(
+            caPem, connectTimeoutSec = 15, readTimeoutSec = 30, refreshOn401 = false,
+        )
 
     @Serializable
     data class LoginResponse(
@@ -44,6 +46,12 @@ class NostrLoginApi(
         val is_admin: Boolean = false,
         val npub: String = "",
         val expires_in: Long = 0,
+        // Rotating refresh-token session (vezir server >= 0.10.0).  Absent
+        // (empty) against older servers, in which case the app falls back
+        // to the pre-refresh re-login-on-401 behaviour.
+        val access_jwt: String = "",
+        val refresh_token: String = "",
+        val refresh_expires_in: Long = 0,
     )
 
     sealed class Result {

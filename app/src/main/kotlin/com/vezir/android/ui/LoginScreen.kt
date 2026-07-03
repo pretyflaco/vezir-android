@@ -43,13 +43,21 @@ import kotlinx.coroutines.launch
  *   3. **Token / QR** — the legacy advanced path ([onUseToken] → SetupScreen).
  *
  * [defaultUrl] pre-fills the server (the public host).  On success the
- * screen calls [onLoggedIn] with the resolved (url, jwt); MainActivity
- * runs `/api/me` team discovery from there.
+ * screen calls [onLoggedIn] with the resolved
+ * (url, accessJwt, refreshToken, accessExpiresIn); MainActivity runs
+ * `/api/me` team discovery from there.  [refreshToken] is empty against a
+ * pre-0.10.0 server (no rotating sessions), in which case the app keeps
+ * the legacy re-login-on-401 behaviour.
  */
 @Composable
 fun LoginScreen(
     defaultUrl: String,
-    onLoggedIn: (url: String, jwt: String) -> Unit,
+    onLoggedIn: (
+        url: String,
+        jwt: String,
+        refreshToken: String,
+        accessExpiresIn: Long,
+    ) -> Unit,
     onUseToken: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -85,7 +93,8 @@ fun LoginScreen(
             when (val r = NostrLoginApi(url).login(signedJson)) {
                 is NostrLoginApi.Result.Ok -> {
                     status = "Signed in as ${r.data.github}."
-                    onLoggedIn(url, r.data.session_jwt)
+                    val access = r.data.access_jwt.ifEmpty { r.data.session_jwt }
+                    onLoggedIn(url, access, r.data.refresh_token, r.data.expires_in)
                 }
                 is NostrLoginApi.Result.HttpError ->
                     status = "Rejected (${r.code}): ${r.message}"
@@ -207,7 +216,10 @@ fun LoginScreen(
                         is GoogleLoginApi.Result.Ok -> {
                             googleCode = null
                             status = "Signed in as ${poll.data.github} (${poll.data.email})."
-                            onLoggedIn(url, poll.data.session_jwt)
+                            val access = poll.data.access_jwt.ifEmpty { poll.data.session_jwt }
+                            onLoggedIn(
+                                url, access, poll.data.refresh_token, poll.data.expires_in,
+                            )
                         }
                         is GoogleLoginApi.Result.HttpError -> {
                             googleCode = null

@@ -18,7 +18,7 @@ labels speakers, and syncs to your team archive. Sign in with **Nostr** or
 
 ## Status
 
-Alpha (**0.6.3**). Sideload only; no Play Store. Full history in
+Alpha (**0.7.0**). Sideload only; no Play Store. Full history in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Sign in
@@ -74,7 +74,7 @@ dropdown.
 The signed APK is attached to each [GitHub Release](https://github.com/pretyflaco/vezir-android/releases/latest).
 
 ```bash
-adb install -r vezir-android-0.6.3.apk
+adb install -r vezir-android-0.7.0.apk
 ```
 
 Or open the APK in your file manager and allow install from "unknown

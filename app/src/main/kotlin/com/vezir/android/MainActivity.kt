@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,11 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Wire the shared token refresher before any UI/network so the
+        // OkHttp Authenticator can rotate sessions on a 401.
+        com.vezir.android.auth.TokenRefresher.init(
+            TeamCredentialStore(Prefs(applicationContext)),
+        )
         setContent {
             VezirTheme {
                 Surface(
@@ -168,6 +174,27 @@ private fun AppRoot() {
         stack.add(s)
     }
 
+    // Route to the login screen when a token refresh fails definitively
+    // (no refresh token, or the server revoked/expired the session).  Set
+    // by TokenRefresher via the OkHttp Authenticator or the proactive
+    // upload check.  Clears itself so a later re-login starts fresh.
+    val sessionExpired by com.vezir.android.auth.AuthState.sessionExpired.collectAsState()
+    LaunchedEffect(sessionExpired) {
+        if (sessionExpired) {
+            val current = stack.lastOrNull()
+            if (current !is Screen.Login &&
+                current !is Screen.Setup &&
+                current !is Screen.QrScan &&
+                current !is Screen.Splash
+            ) {
+                stack.clear()
+                stack.add(Screen.Login)
+                currentTab = Tab.Record
+            }
+            com.vezir.android.auth.AuthState.clear()
+        }
+    }
+
     fun switchToTeam(teamId: String) {
         teamStore.setActiveId(teamId)
         val team = teamStore.getActive()
@@ -210,10 +237,14 @@ private fun AppRoot() {
             )
             Screen.Login -> LoginScreen(
                 defaultUrl = teamStore.getActive()?.url ?: DEFAULT_SERVER_URL,
-                onLoggedIn = { url, jwt ->
+                onLoggedIn = { url, jwt, refreshToken, accessExpiresIn ->
                     scope.launch {
                         val outcome = com.vezir.android.auth.SessionDiscovery
-                            .discoverAndStore(teamStore, url, jwt, caPem = null)
+                            .discoverAndStore(
+                                teamStore, url, jwt, caPem = null,
+                                refreshToken = refreshToken,
+                                accessExpiresIn = accessExpiresIn,
+                            )
                         if (outcome.teamCount > 0) {
                             prefs.clearLegacyCredentials()
                             activeTeamLabel = outcome.activeLabel
@@ -347,6 +378,19 @@ private fun AppRoot() {
                 activeTeamLabel = activeTeamLabel,
                 onImport = { push(Screen.Import) },
                 onSignOut = {
+                    // Best-effort server-side session revocation before we
+                    // drop the local credential (server >= 0.10.0).
+                    val active = teamStore.getActive()
+                    if (active != null) {
+                        scope.launch {
+                            runCatching {
+                                com.vezir.android.net.LogoutApi(
+                                    active.url, active.token, active.caPem,
+                                ).logout()
+                            }
+                        }
+                    }
+                    com.vezir.android.auth.AuthState.clear()
                     prefs.clear()
                     replaceTop(Screen.Login)
                 },

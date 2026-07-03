@@ -15,6 +15,45 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.7.0 — stay signed in (rotating refresh tokens)
+
+Ends the daily forced logout.  As long as the app is used, the session
+renews itself silently — no more re-approving in Amber / re-doing the
+Google device flow every day.
+
+Pairs with vezir server **≥ 0.10.0**, which now issues a short-lived
+(60-minute) access token plus a rotating **refresh token** at login.
+
+### Added
+
+- **Silent token refresh.** On any `401`, an OkHttp `Authenticator`
+  exchanges the stored refresh token at `POST /api/auth/refresh` for a
+  fresh access token and retries the request once — transparently, across
+  every screen (sessions, labeling, uploads, polling). Uploads also
+  refresh proactively before starting, so a large upload never dies at
+  100% on an expired token.
+- **Single-flight refresh.** Concurrent 401s coalesce onto one refresh
+  behind a mutex. Refresh tokens are single-use with server-side reuse
+  detection, so a racing double-refresh would revoke the whole session —
+  the mutex prevents that.
+- **Multi-team aware.** A refresh updates every team entry that shares the
+  session (one login = one session family across your teams).
+- **Auto sign-in prompt.** When a refresh fails for real (no refresh
+  token, or the server revoked/expired the session — 7-day idle / 30-day
+  absolute cap), the app now routes you back to the login screen instead
+  of showing a raw `401`.
+- **`Sign out` now revokes server-side.** Signing out calls
+  `POST /api/auth/logout` so the session can't be refreshed again, then
+  clears local credentials.
+
+### Notes
+
+- **Backward compatible.** Against a server older than 0.10.0 (no refresh
+  token issued), the app behaves exactly as 0.6.3 did — detect expiry,
+  prompt to sign in again. Legacy `vzr_` tokens are unaffected.
+- Refresh tokens are stored in the same EncryptedSharedPreferences as the
+  access token and wiped on sign-out.
+
 ## 0.6.3 — handle expired session (no more silent 401 after upload)
 
 Fixes the `HTTP 401` some users hit at 100% upload, plus a related silent

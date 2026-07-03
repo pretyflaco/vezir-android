@@ -1,7 +1,12 @@
 package com.vezir.android.net
 
+import com.vezir.android.auth.TokenRefresher
+import kotlinx.coroutines.runBlocking
+import okhttp3.Authenticator
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.Route
 import java.util.concurrent.TimeUnit
 
 /**
@@ -31,13 +36,59 @@ object HttpClients {
         caPem: String?,
         connectTimeoutSec: Long = 15,
         readTimeoutSec: Long = 30,
+        refreshOn401: Boolean = true,
     ): OkHttpClient {
         val builder = caPem?.let { CaTrustManager.builderWithCa(it) }
             ?: OkHttpClient.Builder()
-        return builder
+        builder
             .connectTimeout(connectTimeoutSec, TimeUnit.SECONDS)
             .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
-            .build()
+        if (refreshOn401) {
+            builder.authenticator(RefreshAuthenticator)
+        }
+        return builder.build()
+    }
+
+    /**
+     * OkHttp [Authenticator] that, on a 401 to a Bearer-authenticated
+     * request, transparently rotates the session via [TokenRefresher] and
+     * retries the request once with the new access token.
+     *
+     * Guards:
+     *  * Only acts on requests that carried an `Authorization: Bearer`
+     *    header (login/refresh calls don't, so they never recurse).
+     *  * Retries at most once (`responseCount` check) — a second 401 means
+     *    the fresh token was also rejected, so we give up (return null) and
+     *    let the 401 surface; [TokenRefresher] has already flipped
+     *    [com.vezir.android.auth.AuthState] to route to login.
+     *  * If refresh yields the same token (or none), gives up to avoid a
+     *    request loop.
+     */
+    private object RefreshAuthenticator : Authenticator {
+        override fun authenticate(route: Route?, response: Response): Request? {
+            val failed = response.request
+            val header = failed.header("Authorization") ?: return null
+            if (!header.startsWith("Bearer ")) return null
+            if (responseCount(response) >= 2) return null  // already retried once
+
+            val oldToken = header.removePrefix("Bearer ").trim()
+            val newToken = runBlocking { TokenRefresher.refresh(oldToken) }
+            if (newToken.isNullOrEmpty() || newToken == oldToken) return null
+
+            return failed.newBuilder()
+                .header("Authorization", "Bearer $newToken")
+                .build()
+        }
+
+        private fun responseCount(response: Response): Int {
+            var count = 1
+            var prior = response.priorResponse
+            while (prior != null) {
+                count++
+                prior = prior.priorResponse
+            }
+            return count
+        }
     }
 
     /**
