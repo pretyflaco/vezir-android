@@ -7,12 +7,24 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-// Optional release-signing config. If keystore.properties is present we
+// Optional release-signing config. If keystore.properties is found we
 // build a signed release APK; otherwise assembleRelease falls back to
 // the debug keystore so CI / first-time clones still build.
+//
+// v0.8.0: the keystore + properties live OUTSIDE the repo working tree
+// (~/.android-keystores/vezir/) so they are never one .gitignore edit or
+// `git add -f` away from being committed.  Resolution order:
+//   1. $VEZIR_ANDROID_KEYSTORE_PROPS (explicit override)
+//   2. ~/.android-keystores/vezir/keystore.properties (canonical)
+//   3. <repo>/keystore.properties (legacy fallback; discouraged)
+val keystorePropsFile: File? = sequenceOf(
+    System.getenv("VEZIR_ANDROID_KEYSTORE_PROPS")?.let { File(it) },
+    File(System.getProperty("user.home"), ".android-keystores/vezir/keystore.properties"),
+    rootProject.file("keystore.properties"),
+).firstOrNull { it != null && it.exists() }
+
 val keystoreProps = Properties().apply {
-    val f = rootProject.file("keystore.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    keystorePropsFile?.inputStream()?.use { load(it) }
 }
 val hasReleaseSigning = keystoreProps.getProperty("storeFile") != null
 
