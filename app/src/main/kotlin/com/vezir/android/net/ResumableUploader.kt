@@ -28,10 +28,21 @@ import java.util.concurrent.TimeUnit
  * offset and resumes the PATCH from there instead of restarting at byte
  * 0 (the gap the old [Uploader] had).  Streams chunks from a content
  * URI, seeking to the resume offset.
+ *
+ * v0.8.0:
+ *  * [tokenProvider] instead of a frozen token — after the OkHttp
+ *    authenticator rotates the session mid-upload, every subsequent
+ *    chunk immediately carries the fresh token instead of paying a
+ *    401 + refresh-mutex round-trip per request.
+ *  * Per-chunk read/write timeouts (a chunk is only 4 MiB) — the old
+ *    30-minute socket timeouts could leave a dead-but-open connection
+ *    "in progress" for hours.
+ *  * [upload] can resume a persisted upload session (`existingUploadId`)
+ *    so a process-death mid-upload no longer restarts from byte 0.
  */
 class ResumableUploader(
     private val baseUrl: String,
-    private val token: String,
+    private val tokenProvider: () -> String,
     private val teamId: String?,
     private val contentResolver: ContentResolver,
     caPem: String? = null,
@@ -42,6 +53,11 @@ class ResumableUploader(
         private const val CHUNK = 4 * 1024 * 1024 // 4 MiB
         private val OFFSET_OCTET = "application/offset+octet-stream".toMediaType()
         private val json = Json { ignoreUnknownKeys = true }
+        // Support probe result per base URL: the answer can't change
+        // without a server upgrade, so don't re-probe (and re-create a
+        // junk zero-length session) before every upload.
+        private val supportCache =
+            java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     }
 
     @Serializable
@@ -62,25 +78,35 @@ class ResumableUploader(
     fun interface OnRetry { fun onRetry(attempt: Int, max: Int, cause: Throwable) }
 
     private val client: OkHttpClient =
-        HttpClients.build(caPem, connectTimeoutSec = 30, readTimeoutSec = 30 * 60)
+        HttpClients.build(caPem, connectTimeoutSec = 30, readTimeoutSec = 2 * 60)
             .newBuilder()
-            .writeTimeout(30, TimeUnit.MINUTES)
+            // Per-CHUNK budget: 4 MiB must finish in 5 min or the
+            // connection is dead; the retry loop then resumes from the
+            // server's offset.
+            .writeTimeout(5, TimeUnit.MINUTES)
             .build()
 
-    /** Probe whether the server exposes resumable endpoints. */
+    /** Probe whether the server exposes resumable endpoints (cached). */
     suspend fun isSupported(): Boolean = withContext(Dispatchers.IO) {
+        supportCache[baseUrl]?.let { return@withContext it }
         val url = baseUrl.trimEnd('/') + "/upload/resumable"
         // Upload-Length=0 => 400 if the route exists, 404/405 if not.
-        val req = HttpClients.authHeaders(Request.Builder().url(url), token, teamId)
+        val req = HttpClients.authHeaders(Request.Builder().url(url), tokenProvider(), teamId)
             .addHeader("Upload-Length", "0")
             .post(RequestBody.create(null, ByteArray(0)))
             .build()
         try {
             client.newCall(req).execute().use { resp ->
-                resp.code != 404 && resp.code != 405
+                val supported = resp.code != 404 && resp.code != 405
+                supportCache[baseUrl] = supported
+                supported
             }
         } catch (_: IOException) {
-            false
+            // Flaky network is NOT evidence the route is missing.  Assume
+            // supported — exactly when the network is bad is when resume
+            // matters most, and upload() itself falls back on a real
+            // 404/405 (Outcome.Unsupported).  Don't cache the guess.
+            true
         }
     }
 
@@ -95,6 +121,14 @@ class ResumableUploader(
         maxAttempts: Int = 5,
         progress: Progress = Progress { _, _ -> },
         onRetry: OnRetry = OnRetry { _, _, _ -> },
+        // v0.8.0: resume a persisted upload session across process death.
+        // When set, the id is HEADed first; if the server still knows it,
+        // the PATCH resumes from the server's offset instead of byte 0.
+        // A stale/unknown id falls through to creating a fresh session.
+        existingUploadId: String? = null,
+        // Fired as soon as a session id is known (created or reused) so
+        // the caller can persist it BEFORE any bytes move.
+        onSession: (String) -> Unit = {},
     ): Outcome = withContext(Dispatchers.IO) {
         val total = queryUriSize(contentUri)
         if (total <= 0L) {
@@ -102,32 +136,53 @@ class ResumableUploader(
         }
         val base = baseUrl.trimEnd('/')
 
-        // 1. Create the session.
-        val createReq = HttpClients.authHeaders(
-            Request.Builder().url("$base/upload/resumable"), token, teamId,
-        )
-            .addHeader("Upload-Length", total.toString())
-            .addHeader("Upload-Filename", fileName)
-            .addHeader("Upload-Content-Type", "audio/ogg")
-            .post(formBody(title, summaryPreset, autoLabel, sync, personal))
-            .build()
-
-        val uploadId: String
-        try {
-            client.newCall(createReq).execute().use { resp ->
-                val b = resp.body?.string()
-                if (resp.code == 404 || resp.code == 405) return@withContext Outcome.Unsupported
-                if (!resp.isSuccessful || b == null) {
-                    return@withContext Outcome.HttpError(resp.code, resp.message, b)
+        var uploadId: String? = null
+        var initialOffset = 0L
+        if (existingUploadId != null) {
+            try {
+                val off = headOffset("$base/upload/resumable/$existingUploadId")
+                if (off != null) {
+                    uploadId = existingUploadId
+                    initialOffset = off
+                    Log.i(TAG, "resuming persisted upload $existingUploadId from offset $off")
                 }
-                uploadId = json.decodeFromString(CreateResponse.serializer(), b).upload_id
+            } catch (_: IOException) {
+                // Transient probe failure: prefer a fresh session over
+                // failing the whole upload here.
             }
-        } catch (e: IOException) {
-            return@withContext Outcome.Failed(e)
         }
 
+        if (uploadId == null) {
+            // 1. Create the session.
+            val createReq = HttpClients.authHeaders(
+                Request.Builder().url("$base/upload/resumable"), tokenProvider(), teamId,
+            )
+                .addHeader("Upload-Length", total.toString())
+                .addHeader("Upload-Filename", fileName)
+                .addHeader("Upload-Content-Type", "audio/ogg")
+                .post(formBody(title, summaryPreset, autoLabel, sync, personal))
+                .build()
+
+            try {
+                client.newCall(createReq).execute().use { resp ->
+                    val b = resp.body?.string()
+                    if (resp.code == 404 || resp.code == 405) {
+                        supportCache[baseUrl] = false
+                        return@withContext Outcome.Unsupported
+                    }
+                    if (!resp.isSuccessful || b == null) {
+                        return@withContext Outcome.HttpError(resp.code, resp.message, b)
+                    }
+                    uploadId = json.decodeFromString(CreateResponse.serializer(), b).upload_id
+                }
+            } catch (e: IOException) {
+                return@withContext Outcome.Failed(e)
+            }
+        }
+
+        onSession(uploadId!!)
         val location = "$base/upload/resumable/$uploadId"
-        var offset = 0L
+        var offset = initialOffset
         var lastCause: Throwable? = null
 
         for (attempt in 1..maxAttempts) {
@@ -184,7 +239,7 @@ class ResumableUploader(
         while (offset < total) {
             val end = minOf(offset + CHUNK, total)
             val body = SlicedUriBody(contentResolver, contentUri, offset, end - offset, OFFSET_OCTET)
-            val req = HttpClients.authHeaders(Request.Builder().url(location), token, teamId)
+            val req = HttpClients.authHeaders(Request.Builder().url(location), tokenProvider(), teamId)
                 .addHeader("Upload-Offset", offset.toString())
                 .addHeader("Tus-Resumable", TUS_VERSION)
                 .patch(body)
@@ -217,7 +272,7 @@ class ResumableUploader(
     }
 
     private fun headOffset(location: String): Long? {
-        val req = HttpClients.authHeaders(Request.Builder().url(location), token, teamId)
+        val req = HttpClients.authHeaders(Request.Builder().url(location), tokenProvider(), teamId)
             .head()
             .build()
         client.newCall(req).execute().use { resp ->

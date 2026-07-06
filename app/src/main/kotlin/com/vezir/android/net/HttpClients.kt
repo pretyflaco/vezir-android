@@ -24,9 +24,28 @@ import java.util.concurrent.TimeUnit
  */
 object HttpClients {
 
+    // One base client per trust configuration (system CAs vs. system+custom
+    // CA).  v0.8.0: `build` previously constructed a brand-new OkHttpClient
+    // per call — its own connection pool, dispatcher, and TLS context per
+    // API class — contradicting this object's documented contract.  Derived
+    // clients via `newBuilder()` share the base's pool/dispatcher while
+    // still allowing per-use timeouts.
+    private val baseClients =
+        java.util.concurrent.ConcurrentHashMap<String, OkHttpClient>()
+
+    private fun baseClient(caPem: String?): OkHttpClient =
+        baseClients.getOrPut(caPem?.hashCode()?.toString() ?: "system") {
+            (caPem?.let { CaTrustManager.builderWithCa(it) }
+                ?: OkHttpClient.Builder()).build()
+        }
+
     /**
      * Build an [OkHttpClient] that trusts the system CAs plus an
      * optional custom CA from the enrollment QR payload.
+     *
+     * Derived from a shared base client, so the connection pool,
+     * dispatcher, and TLS context are reused across all API classes and
+     * URL-failover attempts in [ResilientApi].
      *
      * @param caPem PEM-encoded CA certificate, or null for system-only trust.
      * @param connectTimeoutSec TCP connect timeout in seconds.
@@ -38,9 +57,7 @@ object HttpClients {
         readTimeoutSec: Long = 30,
         refreshOn401: Boolean = true,
     ): OkHttpClient {
-        val builder = caPem?.let { CaTrustManager.builderWithCa(it) }
-            ?: OkHttpClient.Builder()
-        builder
+        val builder = baseClient(caPem).newBuilder()
             .connectTimeout(connectTimeoutSec, TimeUnit.SECONDS)
             .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
         if (refreshOn401) {

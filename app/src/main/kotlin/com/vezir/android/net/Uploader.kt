@@ -33,7 +33,9 @@ import java.util.concurrent.TimeUnit
  */
 class Uploader(
     private val baseUrl: String,
-    private val token: String,
+    // v0.8.0: provider instead of a frozen token, so a mid-upload session
+    // rotation is picked up by the next attempt without an extra 401.
+    private val tokenProvider: () -> String,
     private val teamId: String?,
     private val contentResolver: ContentResolver,
     caPem: String? = null,
@@ -117,7 +119,7 @@ class Uploader(
                     autoLabel, sync, personal, totalBytes, progress,
                 )
                 val request = HttpClients.authHeaders(
-                    Request.Builder().url(url), token, teamId,
+                    Request.Builder().url(url), tokenProvider(), teamId,
                 ).post(body).build()
                 client.newCall(request).execute().use { resp ->
                     val responseBody = resp.body?.string()
