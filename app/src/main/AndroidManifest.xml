@@ -15,6 +15,11 @@
         android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Upload worker (v0.8.0): uploads run as WorkManager foreground work
+         of type dataSync so a backgrounded app / Doze can't silently kill
+         a multi-minute transfer. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- QR scan (M5). Declared optional so devices without a camera can
@@ -73,6 +78,15 @@
             android:name=".capture.CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone" />
+
+        <!-- WorkManager's foreground-service host must declare the
+             dataSync type for UploadWorker.setForeground() on API 34+.
+             tools:node="merge" folds this into the library's own
+             declaration. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- FileProvider for sharing artifacts (PDF, txt, etc.) via
              Intent.ACTION_SEND. Uses the app's internal cache dir. -->

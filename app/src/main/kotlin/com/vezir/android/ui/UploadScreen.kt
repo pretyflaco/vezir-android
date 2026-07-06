@@ -69,11 +69,12 @@ fun UploadScreen(
                 c.url, c.altUrls, token, c.id, c.caPem,
             )
             val uploadUrl = resilient.findReachableUrl() ?: c.url
+            // v0.8.0: the upload runs as foreground WorkManager work; the
+            // worker reads credentials fresh from encrypted prefs (the
+            // refreshed token above is already persisted by TokenRefresher).
             UploadController.startUpload(
+                context = context,
                 baseUrl = uploadUrl,
-                token = token,
-                teamId = c.id,
-                contentResolver = context.contentResolver,
                 contentUri = contentUri,
                 fileName = fileName,
                 title = title,
@@ -81,7 +82,6 @@ fun UploadScreen(
                 autoLabel = autoLabel,
                 sync = sync,
                 personal = personal,
-                caPem = c.caPem,
             )
         }
     }
@@ -178,7 +178,10 @@ fun UploadScreen(
             )
             if (snapshot.attempt > 1 && snapshot.state == UploadController.State.UPLOADING) {
                 MonoStatus(
-                    "retry ${snapshot.attempt}/${snapshot.maxAttempts}; restarted from byte 0",
+                    if (snapshot.restartedFromZero)
+                        "retry ${snapshot.attempt}/${snapshot.maxAttempts}; restarted from byte 0"
+                    else
+                        "retry ${snapshot.attempt}/${snapshot.maxAttempts}; resuming from server offset",
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -237,7 +240,7 @@ fun UploadScreen(
             snapshot.state != UploadController.State.UPLOADING) {
             OutlinedButton(
                 onClick = {
-                    UploadController.reset()
+                    UploadController.reset(context)
                     onSessionDetail(snapshot.sessionId!!)
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -249,7 +252,7 @@ fun UploadScreen(
 
         OutlinedButton(
             onClick = {
-                UploadController.reset()
+                UploadController.reset(context)
                 onDismiss()
             },
             modifier = Modifier.fillMaxWidth(),

@@ -1,6 +1,6 @@
 package com.vezir.android.net
 
-import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -12,11 +12,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Process-wide upload + status-poll state. The UI subscribes; the upload
- * coroutine writes here on each progress callback / status change.
+ * Process-wide upload + status-poll state. The UI subscribes; the
+ * [UploadWorker] writes here on each progress callback / status change.
+ *
+ * v0.8.0: the upload itself moved into [UploadWorker] (foreground
+ * WorkManager work with a persisted tus session), so it survives
+ * backgrounding and process death.  This object is now a thin layer:
+ * [startUpload] enqueues the worker, the worker publishes progress into
+ * the snapshot, and the post-upload status poll (UI sugar; cheap) runs
+ * here in-process.
  *
  * v1 supports one upload at a time. Re-launching while an upload is in
- * flight cancels the previous job.
+ * flight replaces the queued work.
  */
 object UploadController {
 
@@ -37,45 +44,43 @@ object UploadController {
         val summaryError: String? = null,         // summary-only failure (transcript OK)
         val syncError: String? = null,            // sync-only failure (artifacts OK)
         val errorMessage: String? = null,         // upload-side error
-        // v0.5.0: dashboardUrl / dashboardLoginUrl removed; the
-        // HTML dashboard was dropped in vezir server v0.7.0.  Users
-        // who want to browse the session use the app's own detail
-        // screen now.
+        /** True when the last retry restarted from byte 0 (legacy path). */
+        val restartedFromZero: Boolean = false,
     )
 
     private val _state = MutableStateFlow(Snapshot())
     val state: StateFlow<Snapshot> = _state.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var job: Job? = null
+    private var pollJob: Job? = null
 
     /** Cancel any in-flight upload/poll and reset to IDLE. */
-    fun reset() {
-        job?.cancel()
-        job = null
+    fun reset(context: Context? = null) {
+        pollJob?.cancel()
+        pollJob = null
+        context?.let { UploadWorker.cancel(it) }
         _state.value = Snapshot()
     }
 
     /**
-     * Force an ERROR state from outside the upload coroutine — used by the
-     * UI to short-circuit a doomed upload when the session JWT is already
+     * Force an ERROR state from outside the worker — used by the UI to
+     * short-circuit a doomed upload when the session JWT is already
      * expired, before any bytes leave the device.
      */
     fun setError(message: String) {
-        job?.cancel()
-        job = null
+        pollJob?.cancel()
+        pollJob = null
         _state.value = Snapshot(state = State.ERROR, errorMessage = message)
     }
 
     /**
-     * Kick an upload (and a follow-up poller on success). Idempotent if a
-     * different session is already in flight: the current job is cancelled.
+     * Enqueue the upload as unique foreground work (and reset the
+     * snapshot to UPLOADING).  Credentials are read by the worker from
+     * encrypted prefs — they never ride through WorkManager's Data.
      */
     fun startUpload(
+        context: Context,
         baseUrl: String,
-        token: String,
-        teamId: String?,
-        contentResolver: ContentResolver,
         contentUri: Uri,
         fileName: String,
         title: String?,
@@ -83,133 +88,57 @@ object UploadController {
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
-        caPem: String? = null,
     ) {
-        job?.cancel()
+        pollJob?.cancel()
+        pollJob = null
         _state.value = Snapshot(state = State.UPLOADING)
-        job = scope.launch {
-            // v0.5.2: prefer the resumable protocol (resumes from the
-            // server's offset on a mid-upload drop instead of byte 0).
-            // Fall back to the legacy one-shot Uploader on servers that
-            // don't expose /upload/resumable.
-            val resumable = ResumableUploader(baseUrl, token, teamId, contentResolver, caPem)
-            val progress = ResumableUploader.Progress { sent, total ->
-                _state.value = _state.value.copy(
-                    state = State.UPLOADING, sentBytes = sent, totalBytes = total,
-                )
-            }
-            val onRetry = ResumableUploader.OnRetry { attempt, max, _ ->
-                // Resumable resumes from the server offset, so do NOT
-                // reset sentBytes to 0 here.
-                _state.value = _state.value.copy(attempt = attempt + 1, maxAttempts = max)
-            }
-
-            if (resumable.isSupported()) {
-                when (val o = resumable.upload(
-                    contentUri, fileName, title, summaryPreset,
-                    autoLabel, sync, personal,
-                    progress = progress, onRetry = onRetry,
-                )) {
-                    is ResumableUploader.Outcome.Success -> {
-                        _state.value = _state.value.copy(
-                            state = State.POLLING, sessionId = o.sessionId,
-                            sentBytes = o.bytes, totalBytes = o.bytes,
-                        )
-                        pollForStatus(baseUrl, token, teamId, o.sessionId, caPem)
-                        return@launch
-                    }
-                    is ResumableUploader.Outcome.HttpError -> {
-                        _state.value = _state.value.copy(
-                            state = State.ERROR,
-                            errorMessage = if (o.code == 401) SESSION_EXPIRED_MESSAGE
-                            else "HTTP ${o.code}: ${o.message}",
-                        )
-                        return@launch
-                    }
-                    is ResumableUploader.Outcome.Failed -> {
-                        _state.value = _state.value.copy(
-                            state = State.ERROR,
-                            errorMessage = o.cause.message ?: o.cause.toString(),
-                        )
-                        return@launch
-                    }
-                    is ResumableUploader.Outcome.Unsupported -> {
-                        // fall through to the legacy path below
-                    }
-                }
-            }
-
-            runLegacyUpload(
-                baseUrl, token, teamId, contentResolver, contentUri,
-                fileName, title, summaryPreset, autoLabel, sync, personal, caPem,
-            )
-        }
+        UploadWorker.enqueue(
+            context, baseUrl, contentUri, fileName, title,
+            summaryPreset, autoLabel, sync, personal,
+        )
     }
 
-    private suspend fun runLegacyUpload(
+    // ── Worker-facing publishers ────────────────────────────────────────
+
+    internal fun publishProgress(sent: Long, total: Long) {
+        _state.value = _state.value.copy(
+            state = State.UPLOADING, sentBytes = sent, totalBytes = total,
+        )
+    }
+
+    internal fun publishRetry(attempt: Int, max: Int, restarted: Boolean = false) {
+        _state.value = _state.value.copy(
+            state = State.UPLOADING,
+            attempt = attempt,
+            maxAttempts = max,
+            restartedFromZero = restarted,
+            // The resumable path resumes from the server offset; only the
+            // legacy path restarts from byte 0.
+            sentBytes = if (restarted) 0L else _state.value.sentBytes,
+        )
+    }
+
+    internal fun publishError(message: String) {
+        _state.value = _state.value.copy(
+            state = State.ERROR, errorMessage = message,
+        )
+    }
+
+    internal fun publishSuccess(
         baseUrl: String,
         token: String,
         teamId: String?,
-        contentResolver: ContentResolver,
-        contentUri: Uri,
-        fileName: String,
-        title: String?,
-        summaryPreset: String?,
-        autoLabel: Boolean,
-        sync: Boolean,
-        personal: Boolean,
+        sessionId: String,
+        bytes: Long,
         caPem: String?,
     ) {
-        val uploader = Uploader(baseUrl, token, teamId, contentResolver, caPem)
-        val outcome = uploader.upload(
-            contentUri = contentUri,
-            fileName = fileName,
-            title = title,
-            summaryPreset = summaryPreset,
-            autoLabel = autoLabel,
-            sync = sync,
-            personal = personal,
-            progress = { sent, total ->
-                _state.value = _state.value.copy(
-                    state = State.UPLOADING,
-                    sentBytes = sent,
-                    totalBytes = total,
-                )
-            },
-            onRetry = { attempt, max, _ ->
-                _state.value = _state.value.copy(
-                    attempt = attempt + 1, // we're about to attempt the next
-                    maxAttempts = max,
-                    sentBytes = 0L,        // legacy path restarts from byte 0
-                )
-            },
+        _state.value = _state.value.copy(
+            state = State.POLLING, sessionId = sessionId,
+            sentBytes = bytes, totalBytes = bytes,
         )
-        when (outcome) {
-            is Uploader.Outcome.Success -> {
-                _state.value = _state.value.copy(
-                    state = State.POLLING,
-                    sessionId = outcome.response.session_id,
-                    sentBytes = outcome.response.bytes,
-                    totalBytes = outcome.response.bytes,
-                )
-                pollForStatus(
-                    baseUrl, token, teamId,
-                    outcome.response.session_id, caPem,
-                )
-            }
-            is Uploader.Outcome.HttpError -> {
-                _state.value = _state.value.copy(
-                    state = State.ERROR,
-                    errorMessage = if (outcome.code == 401) SESSION_EXPIRED_MESSAGE
-                    else "HTTP ${outcome.code}: ${outcome.message}",
-                )
-            }
-            is Uploader.Outcome.Failed -> {
-                _state.value = _state.value.copy(
-                    state = State.ERROR,
-                    errorMessage = outcome.cause.message ?: outcome.cause.toString(),
-                )
-            }
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            pollForStatus(baseUrl, token, teamId, sessionId, caPem)
         }
     }
 
