@@ -107,9 +107,21 @@ fun RecordScreen(
     val recordAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { results ->
-        val allGranted = results.values.all { it }
-        if (allGranted) {
-            permissionStatus = null
+        // Gate ONLY on RECORD_AUDIO.  POST_NOTIFICATIONS is requested in the
+        // same launcher but is optional: the foreground service runs without
+        // it (the user just won't see the persistent notification).  The old
+        // all-granted check refused to record when the user denied only
+        // notifications — with a message that wrongly blamed RECORD_AUDIO.
+        val micGranted = results[Manifest.permission.RECORD_AUDIO]
+            ?: (ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED)
+        if (micGranted) {
+            permissionStatus =
+                if (results[Manifest.permission.POST_NOTIFICATIONS] == false) {
+                    "Heads up: notifications are off, so the recording " +
+                        "status notification won't show. Recording works."
+                } else null
             pendingStart = true
         } else {
             permissionStatus = "RECORD_AUDIO is required. " +

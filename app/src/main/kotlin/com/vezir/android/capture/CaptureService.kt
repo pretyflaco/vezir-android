@@ -311,17 +311,25 @@ class CaptureService : Service() {
             while (!stopRequested) {
                 val now = SystemClock.elapsedRealtime()
                 val elapsedMs = now - startElapsed
-                if (elapsedMs >= maxMs) {
-                    Log.i(TAG, "3h cap reached; stopping")
-                    break
-                }
 
-                // Handle pause transitions.
+                // Handle pause transitions (before the cap check so paused
+                // time is already accounted for).
                 if (pauseRequested && pauseStartMs == 0L) {
                     pauseStartMs = now
                 } else if (!pauseRequested && pauseStartMs > 0L) {
                     totalPausedMs += now - pauseStartMs
                     pauseStartMs = 0L
+                }
+
+                // The cap bounds RECORDED audio, not wall time: a meeting
+                // paused for an hour must still get its full 3h of audio
+                // (BuildConfig.MAX_RECORDING_MILLIS is documented as a
+                // recording-duration cap).
+                val pausedSoFarMs =
+                    totalPausedMs + if (pauseStartMs > 0L) now - pauseStartMs else 0L
+                if (elapsedMs - pausedSoFarMs >= maxMs) {
+                    Log.i(TAG, "3h recorded-audio cap reached; stopping")
+                    break
                 }
 
                 val pbRead = playbackRecord.read(
