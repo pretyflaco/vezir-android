@@ -15,6 +15,63 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.8.0 — uploads that survive anything, permission fix, confidential by default
+
+Hardening release from the 2026-07 ecosystem review.  Pairs with vezir
+server ≥ 0.10.0 (grace-window benefits with ≥ 0.11.0: a refresh response
+lost on a flaky link no longer kills the session server-side).
+
+### Changed
+
+- **Uploads survive backgrounding and process death.**  The upload now
+  runs as foreground WorkManager work (dataSync type, with its own
+  notification), network-constrained with exponential backoff.  The tus
+  `upload_id` is persisted the moment the server session exists, so any
+  retry — including a WorkManager reschedule after the OS killed the
+  app — resumes from the server's byte offset instead of restarting
+  from zero.  Previously the upload lived in a process-wide coroutine:
+  Doze/app-standby/LMK could silently kill a multi-minute transfer with
+  no retry and no error.
+- **Confidential (TEE) is the default summarization preset**, as the
+  README always documented.  The code shipped `high-quality` (Claude)
+  as the default — privacy-relevant drift, now resolved in favor of the
+  documented behavior.  Your explicit preset choice is unaffected.
+- **3 h recording cap now counts recorded audio, not wall time.**  A
+  meeting paused for an hour previously stopped after only 2 h of
+  actual audio.
+
+### Fixed
+
+- **Denying the notification permission no longer blocks recording.**
+  On Android 13+ the permission prompt asks for mic + notifications
+  together; denying only notifications refused to record with a message
+  that wrongly blamed RECORD_AUDIO.  Recording now requires only the
+  mic; a notifications denial shows an accurate heads-up.
+- **Token rotation mid-upload no longer costs a 401 per chunk.**  The
+  uploaders read the current access token per request (token provider)
+  instead of freezing it at construction.
+- **Dead connections no longer hang the upload screen for hours.**
+  Resumable chunks now have 2 min read / 5 min write budgets per 4 MiB
+  chunk (was 30 min socket timeouts); the retry loop resumes from the
+  server offset.
+- **Flaky networks no longer silently downgrade to restart-from-zero.**
+  The resumable-support probe treats an IOException as "assume
+  supported" (a real 404/405 still falls back) and caches its answer
+  per server instead of sending a junk zero-length create per upload.
+- **Label-check worker is network-constrained** (no more offline
+  wakeups burning probe timeouts every 15 min), and its notified-ids
+  cap now evicts oldest-first — the previous unordered set could evict
+  recent ids and re-notify sessions.
+- **One `EncryptedSharedPreferences` instance process-wide.**  Three
+  call sites each built their own instance over the same file (a
+  documented corruption footgun) with repeated Keystore init, once on
+  the main thread.
+- **Release keystore moved out of the repo working tree** to
+  `~/.android-keystores/vezir/` (never committed, but previously one
+  `.gitignore` edit away from it).
+- Shared OkHttp connection pool across all API classes
+  (`HttpClients.build` now honors its documented contract).
+
 ## 0.7.0 — stay signed in (rotating refresh tokens)
 
 Ends the daily forced logout.  As long as the app is used, the session
