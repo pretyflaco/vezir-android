@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         // Wire the shared token refresher before any UI/network so the
         // OkHttp Authenticator can rotate sessions on a 401.
         com.vezir.android.auth.TokenRefresher.init(
-            TeamCredentialStore(Prefs(applicationContext)),
+            TeamCredentialStore(Prefs.get(applicationContext)),
         )
         setContent {
             VezirTheme {
@@ -103,7 +103,7 @@ private sealed class Screen {
 @Composable
 private fun AppRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { Prefs(context) }
+    val prefs = remember { Prefs.get(context) }
     val teamStore = remember { TeamCredentialStore(prefs) }
     val scope = rememberCoroutineScope()
 

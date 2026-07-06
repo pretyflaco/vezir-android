@@ -14,15 +14,22 @@ import androidx.security.crypto.MasterKey
  * Keystore. The file is named `vezir_secure_prefs.xml` so backup-exclusion
  * rules in `xml/backup_rules.xml` and `xml/data_extraction_rules.xml` can
  * target it precisely.
+ *
+ * v0.8.0: use [Prefs.get] — one process-wide instance.  Multiple live
+ * [EncryptedSharedPreferences] instances over the same file are a
+ * documented corruption footgun (and each construction runs Keystore
+ * init, previously up to three times, once on the main thread in
+ * `onCreate`).  The constructor stays public only for the [get]
+ * factory; new call sites must not construct directly.
  */
 class Prefs(context: Context) : TeamCredentialBacking {
 
     private val prefs: SharedPreferences = run {
-        val masterKey = MasterKey.Builder(context)
+        val masterKey = MasterKey.Builder(context.applicationContext)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
         EncryptedSharedPreferences.create(
-            context,
+            context.applicationContext,
             FILE_NAME,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
@@ -50,11 +57,12 @@ class Prefs(context: Context) : TeamCredentialBacking {
      * Summarization preset id sent with the next upload.
      *
      * Valid values: `"high-quality"`, `"confidential"`, `"alternative"`.
-     * Default on Android (returned when unset) is `"high-quality"` which
-     * uses the Claude Max backend (Sonnet 4.6).  This is more reliable
-     * than the TEE-backed `"confidential"` preset which depends on the
-     * Tinfoil router being reachable at transcription time.  The user
-     * can override and the new choice sticks across launches.
+     * Default on Android (returned when unset) is `"confidential"` — the
+     * TEE-backed preset the README has always documented as the Android
+     * default (v0.8.0 resolved the code/docs contradiction in favor of
+     * the privacy-first documented behavior; Tinfoil-router reachability
+     * hiccups are retryable per-session from the detail screen).  The
+     * user can override and the new choice sticks across launches.
      *
      * Setting to `null` or empty resets to the default on next read.
      */
@@ -222,6 +230,15 @@ class Prefs(context: Context) : TeamCredentialBacking {
     }
 
     companion object {
+        @Volatile
+        private var instance: Prefs? = null
+
+        /** Process-wide singleton over the encrypted prefs file. */
+        fun get(context: Context): Prefs =
+            instance ?: synchronized(this) {
+                instance ?: Prefs(context.applicationContext).also { instance = it }
+            }
+
         const val FILE_NAME = "vezir_secure_prefs"
         private const val KEY_URL = "vezir_url"
         private const val KEY_TOKEN = "vezir_token"
@@ -233,7 +250,7 @@ class Prefs(context: Context) : TeamCredentialBacking {
         private const val KEY_SYNC = "vezir_sync"
         private const val KEY_TEAMS_JSON = "vezir_teams_json"
         private const val KEY_ACTIVE_TEAM_ID = "vezir_active_team_id"
-        const val DEFAULT_PRESET = "high-quality"
+        const val DEFAULT_PRESET = "confidential"
 
         /**
          * Preset ids and display labels. Shared by RecordScreen (upload

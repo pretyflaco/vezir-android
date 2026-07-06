@@ -10,14 +10,19 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vezir.android.MainActivity
 import com.vezir.android.R
 import com.vezir.android.data.Prefs
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 
 /**
@@ -39,17 +44,43 @@ class LabelCheckWorker(
         private const val NOTIF_CHANNEL = "vezir-labeling"
         private const val NOTIF_ID = 0x4C42  // "LB"
         private const val PREF_FILE = "vezir_label_notif"
-        private const val KEY_NOTIFIED_IDS = "notified_ids"
+        private const val KEY_NOTIFIED_IDS = "notified_ids"          // legacy set
+        private const val KEY_NOTIFIED_JSON = "notified_ids_json"    // ordered list
 
         fun enqueue(context: Context) {
             val request = PeriodicWorkRequestBuilder<LabelCheckWorker>(
                 15, TimeUnit.MINUTES,
-            ).build()
+            )
+                // v0.8.0: don't wake up offline just to burn the health-probe
+                // timeouts and churn Result.retry().
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                // UPDATE (not KEEP) so devices that enrolled the periodic work
+                // before the constraint existed pick it up on app update.
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
+        }
+
+        /**
+         * Append newly-notified ids, keeping insertion order and evicting the
+         * OLDEST beyond [cap].  (v0.8.0: the previous StringSet storage had
+         * unspecified iteration order, so eviction was arbitrary — recently
+         * notified sessions could be dropped and re-notified.)
+         */
+        internal fun appendNotified(
+            existing: List<String>,
+            new: List<String>,
+            cap: Int = 200,
+        ): List<String> {
+            val merged = (existing + new.filter { it !in existing })
+            return if (merged.size > cap) merged.takeLast(cap) else merged
         }
 
         private fun ensureChannel(context: Context) {
@@ -67,7 +98,7 @@ class LabelCheckWorker(
     }
 
     override suspend fun doWork(): Result {
-        val prefs = Prefs(applicationContext)
+        val prefs = Prefs.get(applicationContext)
         val cred = prefs.activeCredential()
         if (cred == null) {
             return Result.success()  // not enrolled
@@ -85,9 +116,16 @@ class LabelCheckWorker(
         val needsLabeling = result.data.filter { it.status == "needs_labeling" }
         if (needsLabeling.isEmpty()) return Result.success()
 
-        // Check which ones we've already notified about.
+        // Check which ones we've already notified about.  v0.8.0: stored as
+        // an ordered JSON list (StringSet iteration order is unspecified, so
+        // the 200-cap eviction was arbitrary).  Legacy set is migrated on
+        // first read.
         val notifPrefs = applicationContext.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-        val alreadyNotified = notifPrefs.getStringSet(KEY_NOTIFIED_IDS, emptySet()) ?: emptySet()
+        val listSerializer = ListSerializer(String.serializer())
+        val alreadyNotified: List<String> =
+            notifPrefs.getString(KEY_NOTIFIED_JSON, null)?.let { raw ->
+                runCatching { Json.decodeFromString(listSerializer, raw) }.getOrNull()
+            } ?: notifPrefs.getStringSet(KEY_NOTIFIED_IDS, emptySet()).orEmpty().toList()
         val newSessions = needsLabeling.filter { it.id !in alreadyNotified }
         if (newSessions.isEmpty()) return Result.success()
 
@@ -123,11 +161,12 @@ class LabelCheckWorker(
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
         nm?.notify(NOTIF_ID, notif)
 
-        // Track notified IDs.
-        val updated = alreadyNotified + newSessions.map { it.id }
-        // Cap the set to avoid unbounded growth (keep last 200).
-        val capped = if (updated.size > 200) updated.toList().takeLast(200).toSet() else updated
-        notifPrefs.edit().putStringSet(KEY_NOTIFIED_IDS, capped).apply()
+        // Track notified IDs (ordered; oldest evicted beyond the cap).
+        val capped = appendNotified(alreadyNotified, newSessions.map { it.id })
+        notifPrefs.edit()
+            .putString(KEY_NOTIFIED_JSON, Json.encodeToString(listSerializer, capped))
+            .remove(KEY_NOTIFIED_IDS)  // drop the legacy unordered set
+            .apply()
 
         return Result.success()
     }
