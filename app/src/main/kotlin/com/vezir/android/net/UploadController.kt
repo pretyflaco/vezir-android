@@ -98,6 +98,30 @@ object UploadController {
         )
     }
 
+    /**
+     * Enqueue a multi-file meeting upload (vezir >= 0.9.0): several
+     * already-transcoded OGG parts sent as one meeting via /upload/multi.
+     */
+    fun startMultiUpload(
+        context: Context,
+        baseUrl: String,
+        uris: List<Uri>,
+        fileNames: List<String>,
+        title: String?,
+        summaryPreset: String? = null,
+        autoLabel: Boolean = true,
+        sync: Boolean = true,
+        personal: Boolean = false,
+    ) {
+        pollJob?.cancel()
+        pollJob = null
+        _state.value = Snapshot(state = State.UPLOADING)
+        UploadWorker.enqueueMulti(
+            context, baseUrl, uris, fileNames, title,
+            summaryPreset, autoLabel, sync, personal,
+        )
+    }
+
     // ── Worker-facing publishers ────────────────────────────────────────
 
     internal fun publishProgress(sent: Long, total: Long) {

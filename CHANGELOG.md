@@ -15,6 +15,52 @@ keystore since v0.1.0; upgrades install in place.
 > ecosystem name at the time of release; references are accurate as
 > historical record.
 
+## 0.9.0 — desktop feature parity: retitle, delete, multi-file, update nudge
+
+Parity release bringing the Android client level with the vezir desktop
+client (0.12.0).  Pairs with vezir server ≥ 0.11.0; the retitle and
+summary-language features require server ≥ 0.12.0, and multi-file upload
+requires ≥ 0.9.0.  Older servers cleanly reject the new endpoints and the
+app surfaces a "server too old" message.
+
+### Added
+
+- **Edit a session's title after recording** (`POST /api/sessions/{id}/title`,
+  vezir ≥ 0.12.0).  New "Edit title…" action on the session detail screen
+  with a pre-filled dialog; blank clears it.  When the session was already
+  synced, the server's "folder not renamed — re-run sync" advisory is shown.
+- **Delete a session** (`DELETE /api/sessions/{id}`).  New "Delete session…"
+  action with a confirmation dialog; navigates back on success.  Honors the
+  server auth model (admin or original uploader; 403 otherwise).  If the
+  session was already synced, the pushed git copy is left in place (advisory
+  shown).
+- **Summary language picker on Retry summary** (vezir ≥ 0.12.0).  Choose a
+  language (auto / en / de / fr / es / tr / fa); non-auto adds a separate
+  `*.summary.<lang>.md` artifact instead of rewriting the primary summary.
+- **Sync-now folder override.**  "Sync now" now opens a dialog with an
+  optional `meeting_type` folder override, matching the desktop TUI.
+- **Multi-file upload — combine several files into one meeting**
+  (`POST /upload/multi`, vezir ≥ 0.9.0).  The import picker is now
+  multi-select; each file is transcoded to OGG on-device and the batch is
+  uploaded as a single meeting (worker preserves order), running as the same
+  foreground WorkManager work as a single upload.
+- **Update nudge.**  A throttled (~6h) check against GitHub Releases shows a
+  banner on the Sessions screen when a newer signed APK is available, with
+  "View" (opens the release page) and "Dismiss" (per-version).  No in-app
+  self-update — the app is sideloaded.  The Android analog of the desktop
+  TUI's PyPI update check.
+
+### Changed
+
+- **`empty` sessions are handled as terminal** (vezir ≥ 0.11.1): a recording
+  with no audio now shows a badge and stops polling instead of spinning.
+- **Client sends `User-Agent: vezir-android/<version>`** on every request, so
+  the server records it as the session's `client_agent` (vezir ≥ 0.11.1) and
+  the desktop/Android clients are distinguishable server-side.
+- **Refresh survives a lost response.**  `POST /api/auth/refresh` now retries
+  once on a network error, which the server's grace window (≥ 0.11.0) makes
+  safe; a 401 is never retried (that would trip reuse detection).
+
 ## 0.8.0 — uploads that survive anything, permission fix, confidential by default
 
 Hardening release from the 2026-07 ecosystem review.  Pairs with vezir

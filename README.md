@@ -18,7 +18,7 @@ labels speakers, and syncs to your team archive. Sign in with **Nostr** or
 
 ## Status
 
-Alpha (**0.7.0**). Sideload only; no Play Store. Full history in
+Alpha (**0.9.0**). Sideload only; no Play Store. Full history in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Sign in

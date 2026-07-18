@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +45,22 @@ import com.vezir.android.net.SessionPoller
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * Summary languages offered on retry-summary, mirroring the desktop TUI
+ * (vezir/client/tui/detail_screen.py) and the server's accepted set
+ * (vezir/server/sessions.py: _VALID_SUMMARY_LANGUAGES). "auto" rewrites the
+ * primary summary; any other code adds a *.summary.<lang>.md artifact.
+ */
+private val SUMMARY_LANGUAGES: List<Pair<String, String>> = listOf(
+    "auto" to "Auto (detected)",
+    "en" to "English",
+    "de" to "German",
+    "fr" to "French",
+    "es" to "Spanish",
+    "tr" to "Turkish",
+    "fa" to "Persian (Farsi)",
+)
+
 @Composable
 fun SessionDetailScreen(
     prefs: Prefs,
@@ -51,6 +68,7 @@ fun SessionDetailScreen(
     onBack: () -> Unit,
     onLabel: (String) -> Unit,
     onArtifact: (String, String) -> Unit,
+    onDeleted: () -> Unit = onBack,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -68,6 +86,9 @@ fun SessionDetailScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var actionBusy by remember { mutableStateOf(false) }
+    // Transient advisory surfaced after a mutation (e.g. server "warning"
+    // that an already-synced session's git folder was not renamed).
+    var actionMsg by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         scope.launch {
@@ -111,6 +132,29 @@ fun SessionDetailScreen(
                 modifier = Modifier.weight(1f),
             )
             session?.let { StatusBadge(it.status) }
+        }
+
+        actionMsg?.let { msg ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { actionMsg = null }) { Text("Dismiss") }
+                }
+            }
         }
 
         if (loading && session == null) {
@@ -220,6 +264,9 @@ fun SessionDetailScreen(
 
         var menuExpanded by remember { mutableStateOf(false) }
         var showRetrySummaryDialog by remember { mutableStateOf(false) }
+        var showTitleDialog by remember { mutableStateOf(false) }
+        var showDeleteDialog by remember { mutableStateOf(false) }
+        var showSyncDialog by remember { mutableStateOf(false) }
 
         // Primary action: Label speakers (prominent when needed).
         if (s.status == "needs_labeling") {
@@ -229,11 +276,12 @@ fun SessionDetailScreen(
             ) { Text("Label speakers") }
         }
 
-        // Retry summary dialog with preset picker.
+        // Retry summary dialog with preset + language picker.
         if (showRetrySummaryDialog) {
             var chosenPreset by remember {
                 mutableStateOf(s.summary_preset ?: Prefs.DEFAULT_PRESET)
             }
+            var chosenLang by remember { mutableStateOf("auto") }
             AlertDialog(
                 onDismissRequest = { showRetrySummaryDialog = false },
                 title = { Text("Retry summary") },
@@ -247,6 +295,11 @@ fun SessionDetailScreen(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
+                        Text(
+                            "Preset",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Prefs.PRESET_OPTIONS.forEach { (id, label) ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -266,6 +319,39 @@ fun SessionDetailScreen(
                                 )
                             }
                         }
+                        Text(
+                            "Summary language",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        if (chosenLang != "auto") {
+                            Text(
+                                "Adds a separate summary in this language; the " +
+                                    "original summary is kept.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        SUMMARY_LANGUAGES.forEach { (code, label) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { chosenLang = code }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                RadioButton(
+                                    selected = chosenLang == code,
+                                    onClick = { chosenLang = code },
+                                )
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
                     }
                 },
                 confirmButton = {
@@ -274,7 +360,13 @@ fun SessionDetailScreen(
                             showRetrySummaryDialog = false
                             scope.launch {
                                 actionBusy = true
-                                api.execute { it.retrySummary(sessionId, preset = chosenPreset) }
+                                api.execute {
+                                    it.retrySummary(
+                                        sessionId,
+                                        preset = chosenPreset,
+                                        language = chosenLang,
+                                    )
+                                }
                                 refresh()
                                 actionBusy = false
                             }
@@ -286,6 +378,163 @@ fun SessionDetailScreen(
                     TextButton(onClick = { showRetrySummaryDialog = false }) {
                         Text("Cancel")
                     }
+                },
+            )
+        }
+
+        // Edit-title dialog (vezir server >= 0.12.0).
+        if (showTitleDialog) {
+            var titleText by remember { mutableStateOf(s.title ?: "") }
+            AlertDialog(
+                onDismissRequest = { showTitleDialog = false },
+                title = { Text("Edit title") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = titleText,
+                            onValueChange = { titleText = it },
+                            label = { Text("Title") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "Leave blank to clear. Takes effect on the next sync; " +
+                                "an already-synced folder is not renamed automatically.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showTitleDialog = false
+                            scope.launch {
+                                actionBusy = true
+                                when (
+                                    val r = api.execute {
+                                        it.setTitle(sessionId, titleText.trim().ifBlank { null })
+                                    }
+                                ) {
+                                    is SessionApi.Result.Ok -> actionMsg = r.data.warning
+                                    is SessionApi.Result.HttpError ->
+                                        actionMsg = "Could not edit title: ${r.code} ${r.message}"
+                                    is SessionApi.Result.NetworkError ->
+                                        actionMsg = "Network error: ${r.cause.message}"
+                                }
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                        enabled = !actionBusy,
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTitleDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
+
+        // Sync-now dialog with optional meeting-type (folder) override.
+        if (showSyncDialog) {
+            var meetingType by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showSyncDialog = false },
+                title = { Text("Sync now") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "Push this session's artifacts to the team git repo.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedTextField(
+                            value = meetingType,
+                            onValueChange = { meetingType = it },
+                            label = { Text("Folder override (optional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "Leave blank to use the default folder for this session.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showSyncDialog = false
+                            scope.launch {
+                                actionBusy = true
+                                when (
+                                    val r = api.execute {
+                                        it.syncNow(
+                                            sessionId,
+                                            meetingType = meetingType.trim().ifBlank { null },
+                                        )
+                                    }
+                                ) {
+                                    is SessionApi.Result.HttpError ->
+                                        actionMsg = "Sync failed: ${r.code} ${r.message}"
+                                    is SessionApi.Result.NetworkError ->
+                                        actionMsg = "Network error: ${r.cause.message}"
+                                    else -> {}
+                                }
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                        enabled = !actionBusy,
+                    ) { Text("Sync") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSyncDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
+
+        // Delete-confirmation dialog (vezir server >= 0.8.12).
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete session?") },
+                text = {
+                    Text(
+                        "This permanently removes the recording and its artifacts " +
+                            "from the server. If it was already synced to the team " +
+                            "git repo, that pushed copy is not removed. This cannot " +
+                            "be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteDialog = false
+                            scope.launch {
+                                actionBusy = true
+                                when (
+                                    val r = api.execute { it.deleteSession(sessionId) }
+                                ) {
+                                    is SessionApi.Result.Ok -> {
+                                        actionBusy = false
+                                        onDeleted()
+                                        return@launch
+                                    }
+                                    is SessionApi.Result.HttpError ->
+                                        actionMsg = "Could not delete: ${r.code} ${r.message}"
+                                    is SessionApi.Result.NetworkError ->
+                                        actionMsg = "Network error: ${r.cause.message}"
+                                }
+                                actionBusy = false
+                            }
+                        },
+                        enabled = !actionBusy,
+                    ) { Text("Delete") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
                 },
             )
         }
@@ -336,15 +585,20 @@ fun SessionDetailScreen(
                 if (s.status == "done" &&
                     ((s.sync_enabled ?: 1) == 0 || s.sync_error != null)) {
                     DropdownMenuItem(
-                        text = { Text("Sync now") },
+                        text = { Text("Sync now\u2026") },
                         onClick = {
                             menuExpanded = false
-                            scope.launch {
-                                actionBusy = true
-                                api.execute { it.syncNow(sessionId) }
-                                refresh()
-                                actionBusy = false
-                            }
+                            showSyncDialog = true
+                        },
+                    )
+                }
+                // Edit title: any terminal state where retitling is meaningful.
+                if (s.status in listOf("done", "error", "needs_labeling", "empty")) {
+                    DropdownMenuItem(
+                        text = { Text("Edit title\u2026") },
+                        onClick = {
+                            menuExpanded = false
+                            showTitleDialog = true
                         },
                     )
                 }
@@ -359,6 +613,21 @@ fun SessionDetailScreen(
                                 refresh()
                                 actionBusy = false
                             }
+                        },
+                    )
+                }
+                // Delete: available in any terminal state.
+                if (s.isTerminal) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Delete session\u2026",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            showDeleteDialog = true
                         },
                     )
                 }

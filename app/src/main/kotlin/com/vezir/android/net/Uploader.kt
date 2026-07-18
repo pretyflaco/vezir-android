@@ -50,11 +50,17 @@ class Uploader(
     data class UploadResponse(
         val session_id: String,
         val bytes: Long,
+        // `parts` is only present on /upload/multi responses (vezir >=
+        // 0.9.0): the number of audio files concatenated into the meeting.
+        val parts: Int? = null,
         // v0.5.0: dashboard_url + dashboard_login_url removed from the
         // server response when running vezir 0.7.0+ (the HTML dashboard
         // is gone).  Old servers (0.6.x) still emit them; we just don't
         // read them anywhere any more.
     )
+
+    /** One part of a multi-file meeting: its content URI + display name. */
+    data class Part(val uri: Uri, val fileName: String)
 
     sealed class Outcome {
         data class Success(val response: UploadResponse) : Outcome()
@@ -160,6 +166,125 @@ class Uploader(
             }
         }
         Outcome.Failed(lastCause ?: IOException("upload failed (no cause)"))
+    }
+
+    /**
+     * Upload multiple audio files as ONE meeting via POST /upload/multi
+     * (vezir server >= 0.9.0). Mirrors vezir/client/uploader.py:upload_multi:
+     * the server preserves part order and the worker concatenates them
+     * before transcription.
+     *
+     * All parts must be the same audio type (here always OGG, since the
+     * import pipeline transcodes to OGG). A 404/405 response means the
+     * server predates 0.9.0; surfaced as an [Outcome.HttpError] so the
+     * caller can show a "server too old" message and fall back to
+     * per-file single uploads.
+     *
+     * @param parts ordered list of audio parts (URI + display name)
+     */
+    suspend fun uploadMulti(
+        parts: List<Part>,
+        title: String?,
+        summaryPreset: String? = null,
+        autoLabel: Boolean = true,
+        sync: Boolean = true,
+        personal: Boolean = false,
+        maxAttempts: Int = 3,
+        progress: Progress = Progress { _, _ -> },
+        onRetry: OnRetry = OnRetry { _, _, _ -> },
+    ): Outcome = withContext(Dispatchers.IO) {
+        require(parts.isNotEmpty()) { "uploadMulti requires at least one part" }
+        val sizes = parts.map { queryUriSize(it.uri) }
+        val totalBytes = if (sizes.any { it < 0 }) -1L else sizes.sum()
+        val url = baseUrl.trimEnd('/') + "/upload/multi"
+
+        var lastCause: Throwable? = null
+        for (attempt in 1..maxAttempts) {
+            try {
+                val body = buildMultiBody(
+                    parts, sizes, title, summaryPreset,
+                    autoLabel, sync, personal, totalBytes, progress,
+                )
+                val request = HttpClients.authHeaders(
+                    Request.Builder().url(url), tokenProvider(), teamId,
+                ).post(body).build()
+                client.newCall(request).execute().use { resp ->
+                    val responseBody = resp.body?.string()
+                    if (resp.isSuccessful && responseBody != null) {
+                        val parsed = runCatching {
+                            json.decodeFromString(UploadResponse.serializer(), responseBody)
+                        }.getOrElse {
+                            return@withContext Outcome.HttpError(
+                                resp.code, "OK but unparsable response", responseBody,
+                            )
+                        }
+                        return@withContext Outcome.Success(parsed)
+                    }
+                    if (resp.code == 404 || resp.code == 405) {
+                        return@withContext Outcome.HttpError(
+                            resp.code,
+                            "server does not support multi-audio uploads " +
+                                "(requires vezir >= 0.9.0)",
+                            responseBody,
+                        )
+                    }
+                    if (resp.code in 500..599) {
+                        lastCause = IOException("HTTP ${resp.code} ${resp.message}")
+                    } else {
+                        return@withContext Outcome.HttpError(
+                            resp.code, resp.message, responseBody,
+                        )
+                    }
+                }
+            } catch (e: IOException) {
+                lastCause = e
+            } catch (e: Throwable) {
+                return@withContext Outcome.Failed(e)
+            }
+
+            if (attempt < maxAttempts && lastCause != null) {
+                onRetry.onRetry(attempt, maxAttempts, lastCause!!)
+                val backoffMs = 1000L * (1L shl (attempt - 1))
+                Log.w(TAG, "multi upload attempt $attempt/$maxAttempts failed: $lastCause; sleeping ${backoffMs}ms")
+                delay(backoffMs)
+            }
+        }
+        Outcome.Failed(lastCause ?: IOException("multi upload failed (no cause)"))
+    }
+
+    private fun buildMultiBody(
+        parts: List<Part>,
+        sizes: List<Long>,
+        title: String?,
+        summaryPreset: String?,
+        autoLabel: Boolean,
+        sync: Boolean,
+        personal: Boolean,
+        totalBytes: Long,
+        progress: Progress,
+    ): RequestBody {
+        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+        // Aggregate progress across all parts so the UI sees one 0..total ramp.
+        var sentBefore = 0L
+        parts.forEachIndexed { i, part ->
+            val partTotal = sizes[i]
+            val base = sentBefore
+            val partBody = ContentUriRequestBody(
+                contentResolver, part.uri, partTotal, OGG,
+            ) { sent, _ -> progress.onProgress(base + sent, totalBytes) }
+            builder.addFormDataPart("audio", part.fileName, partBody)
+            if (partTotal > 0) sentBefore += partTotal
+        }
+        // Server validates the declared total against bytes received.
+        if (totalBytes >= 0) builder.addFormDataPart("audio_bytes", totalBytes.toString())
+        if (!title.isNullOrBlank()) builder.addFormDataPart("title", title)
+        if (!summaryPreset.isNullOrBlank()) {
+            builder.addFormDataPart("summary_preset", summaryPreset)
+        }
+        builder.addFormDataPart("auto_label", if (autoLabel) "true" else "false")
+        builder.addFormDataPart("sync", if (sync) "true" else "false")
+        builder.addFormDataPart("personal", if (personal) "true" else "false")
+        return builder.build()
     }
 
     private fun buildBody(

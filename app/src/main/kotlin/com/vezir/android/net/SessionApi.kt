@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.IOException
 
 /**
@@ -64,17 +65,44 @@ class SessionApi(
             }
 
         val isPersonal: Boolean get() = (personal ?: 0) != 0
-        val isTerminal: Boolean get() = status in setOf("done", "error")
+        val isTerminal: Boolean get() = status in setOf("done", "error", "empty")
     }
 
     @Serializable
     data class SessionList(val sessions: List<Session>)
+
+    /**
+     * Result of a mutating call (set-title, delete). [warning] carries the
+     * server's non-fatal advisory (e.g. "already synced; folder not renamed
+     * / pushed copy remains") when present, otherwise null.
+     */
+    data class Mutation(val ok: Boolean, val warning: String?)
 
     sealed class Result<out T> {
         data class Ok<T>(val data: T) : Result<T>()
         data class HttpError(val code: Int, val message: String) : Result<Nothing>()
         data class NetworkError(val cause: Throwable) : Result<Nothing>()
     }
+
+    private fun parseMutation(body: String): Mutation =
+        try {
+            val o = JSONObject(body)
+            Mutation(
+                ok = o.optBoolean("ok", true),
+                warning = o.optString("warning", "").ifBlank { null },
+            )
+        } catch (_: Exception) {
+            Mutation(ok = true, warning = null)
+        }
+
+    /** Pull the server's ``detail`` message out of an error body, else message. */
+    private fun errorDetail(resp: okhttp3.Response): String =
+        try {
+            val b = resp.peekBody(64 * 1024).string()
+            JSONObject(b).optString("detail", resp.message).ifBlank { resp.message }
+        } catch (_: Exception) {
+            resp.message
+        }
 
     suspend fun getSessions(limit: Int = 50, since: String? = null): Result<List<Session>> =
         withContext(Dispatchers.IO) {
@@ -122,14 +150,29 @@ class SessionApi(
             }
         }
 
-    suspend fun syncNow(sessionId: String): Result<Boolean> =
+    /**
+     * Trigger a retroactive git sync. An optional [meetingType] overrides
+     * the target folder slug (vezir server >= 0.6.x: JSON body
+     * ``{"meeting_type": "<slug>"}``); the server re-slugifies and
+     * validates it, returning 400 on an invalid value.
+     */
+    suspend fun syncNow(
+        sessionId: String,
+        meetingType: String? = null,
+    ): Result<Boolean> =
         withContext(Dispatchers.IO) {
+            val body = if (meetingType.isNullOrBlank()) {
+                EMPTY_JSON
+            } else {
+                JSONObject().put("meeting_type", meetingType).toString()
+                    .toRequestBody("application/json".toMediaType())
+            }
             val req = HttpClients.authHeaders(
                 Request.Builder()
                     .url("${baseUrl.trimEnd('/')}/session/$sessionId/sync")
                     .header("Accept", "application/json"),
                 token, teamId,
-            ).post(EMPTY_JSON).build()
+            ).post(body).build()
             runCatching {
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) Result.Ok(true)
@@ -140,13 +183,26 @@ class SessionApi(
             }
         }
 
+    /**
+     * Re-run summarization. [preset] optionally switches the backend;
+     * [language] (vezir server >= 0.12.0) optionally regenerates in another
+     * language — ``"auto"`` (or null) rewrites the primary summary, any
+     * other code (``en/de/fr/es/tr/fa``) produces an ADDITIONAL
+     * ``*.summary.<lang>.md`` artifact. Invalid language -> server 400.
+     */
     suspend fun retrySummary(
         sessionId: String,
         preset: String? = null,
+        language: String? = null,
     ): Result<Boolean> =
         withContext(Dispatchers.IO) {
-            val bodyJson = if (preset != null) """{"preset":"$preset"}""" else "{}"
-            val body = bodyJson.toRequestBody("application/json".toMediaType())
+            val obj = JSONObject()
+            if (preset != null) obj.put("preset", preset)
+            // "auto" is the server default; omit it to keep the body minimal.
+            if (!language.isNullOrBlank() && language != "auto") {
+                obj.put("language", language)
+            }
+            val body = obj.toString().toRequestBody("application/json".toMediaType())
             val req = HttpClients.authHeaders(
                 Request.Builder()
                     .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/retry-summary"),
@@ -156,6 +212,67 @@ class SessionApi(
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) Result.Ok(true)
                     else Result.HttpError(resp.code, resp.message)
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
+
+    /**
+     * Add, change, or clear a session's title after recording (vezir server
+     * >= 0.12.0: ``POST /api/sessions/{id}/title``). A blank/null [title]
+     * clears it. Auth mirrors delete: server admin OR original uploader
+     * (403 for other members, 404 cross-team). The response ``warning``
+     * (surfaced as [Mutation.warning]) is non-null when the session was
+     * already synced — the pushed folder is not renamed retroactively.
+     */
+    suspend fun setTitle(
+        sessionId: String,
+        title: String?,
+    ): Result<Mutation> =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("title", title ?: JSONObject.NULL)
+                .toString().toRequestBody("application/json".toMediaType())
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/title"),
+                token, teamId,
+            ).post(body).build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val b = resp.body?.string().orEmpty()
+                        Result.Ok(parseMutation(b))
+                    } else {
+                        Result.HttpError(resp.code, errorDetail(resp))
+                    }
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
+
+    /**
+     * Hard-delete a session from the server (vezir server >= 0.8.12:
+     * ``DELETE /api/sessions/{id}``): DB row + on-disk artifacts. Auth
+     * mirrors set-title. Push-only sync means an already-synced copy stays
+     * in the team git repo; that is reported via [Mutation.warning].
+     */
+    suspend fun deleteSession(sessionId: String): Result<Mutation> =
+        withContext(Dispatchers.IO) {
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId"),
+                token, teamId,
+            ).delete().build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val b = resp.body?.string().orEmpty()
+                        Result.Ok(parseMutation(b))
+                    } else {
+                        Result.HttpError(resp.code, errorDetail(resp))
+                    }
                 }
             }.getOrElse { e ->
                 if (e is IOException) Result.NetworkError(e) else throw e

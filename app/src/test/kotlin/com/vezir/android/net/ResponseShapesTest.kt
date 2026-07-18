@@ -70,12 +70,38 @@ class ResponseShapesTest {
         assertTrue(!s1.isTerminal)
         assertNull(s1.error)
 
-        for (terminal in listOf("done", "error")) {
+        // 'empty' (vezir >= 0.11.1) is a terminal state: a recording with
+        // no audio that is never synced.
+        for (terminal in listOf("done", "error", "empty")) {
             val raw = """{"id":"x","status":"$terminal"}"""
             val s = json.decodeFromString(SessionPoller.SessionStatus.serializer(), raw)
             assertEquals(terminal, s.status)
             assertTrue(s.isTerminal)
         }
+    }
+
+    @Test
+    fun parsesUploadResponse_multi_withParts() {
+        // vezir >= 0.9.0 /upload/multi response carries a `parts` count.
+        val raw = """
+            {
+              "session_id": "01KQDPMRKXWTY37YH3KKC2JTF4",
+              "bytes": 532484,
+              "parts": 3
+            }
+        """.trimIndent()
+        val r = json.decodeFromString(Uploader.UploadResponse.serializer(), raw)
+        assertEquals("01KQDPMRKXWTY37YH3KKC2JTF4", r.session_id)
+        assertEquals(532_484L, r.bytes)
+        assertEquals(3, r.parts)
+    }
+
+    @Test
+    fun uploadResponse_singleFile_hasNullParts() {
+        // The one-shot /upload response has no `parts` field.
+        val raw = """{"session_id":"x","bytes":1}"""
+        val r = json.decodeFromString(Uploader.UploadResponse.serializer(), raw)
+        assertNull(r.parts)
     }
 
     @Test

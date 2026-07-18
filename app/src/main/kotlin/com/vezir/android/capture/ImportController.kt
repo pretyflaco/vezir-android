@@ -34,6 +34,13 @@ object ImportController {
         val resultDisplayPath: String? = null,
         val resultBytes: Long = 0L,
         val errorMessage: String? = null,
+        // Multi-import (>1 file → one meeting): the ordered transcoded parts.
+        // Empty for the single-file path. `partIndex`/`partCount` drive the
+        // "importing file N of M" UI.
+        val resultUris: List<Uri> = emptyList(),
+        val resultNames: List<String> = emptyList(),
+        val partIndex: Int = 0,
+        val partCount: Int = 0,
     )
 
     private val _state = MutableStateFlow(Snapshot())
@@ -78,6 +85,63 @@ object ImportController {
                     resultDisplayName = result.displayName,
                     resultDisplayPath = result.displayPath,
                     resultBytes = result.bytesWritten,
+                )
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(
+                    state = State.ERROR,
+                    errorMessage = t.message ?: t.javaClass.simpleName,
+                )
+            }
+        }
+    }
+
+    /**
+     * Import several source files sequentially, transcoding each to OGG.
+     * The results (in the given order) become the parts of one meeting,
+     * exposed via [Snapshot.resultUris] / [Snapshot.resultNames]. A single
+     * URI falls through to the same [DONE] shape as [startImport] so the
+     * single-file caller keeps working.
+     */
+    fun startMultiImport(context: Context, sources: List<Pair<Uri, String?>>) {
+        job?.cancel()
+        if (sources.isEmpty()) {
+            _state.value = Snapshot(state = State.ERROR, errorMessage = "no files selected")
+            return
+        }
+        _state.value = Snapshot(
+            state = State.IMPORTING,
+            partIndex = 0,
+            partCount = sources.size,
+        )
+        val appCtx = context.applicationContext
+        job = scope.launch {
+            val uris = mutableListOf<Uri>()
+            val names = mutableListOf<String>()
+            try {
+                sources.forEachIndexed { i, (uri, name) ->
+                    _state.value = _state.value.copy(
+                        sourceUri = uri,
+                        sourceName = name,
+                        partIndex = i + 1,
+                        progress = 0f,
+                    )
+                    val result = withContext(Dispatchers.IO) {
+                        AudioImporter(appCtx).import(uri) { fraction ->
+                            _state.value = _state.value.copy(progress = fraction)
+                        }
+                    }
+                    uris += result.outputUri
+                    names += result.displayName
+                }
+                _state.value = _state.value.copy(
+                    state = State.DONE,
+                    progress = 1f,
+                    resultUris = uris,
+                    resultNames = names,
+                    // Mirror single-file fields for the 1-file case.
+                    resultUri = uris.firstOrNull(),
+                    resultDisplayName = names.firstOrNull(),
+                    resultBytes = 0L,
                 )
             } catch (t: Throwable) {
                 _state.value = _state.value.copy(

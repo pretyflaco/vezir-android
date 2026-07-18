@@ -239,7 +239,7 @@ fun SettingsScreen(
             onDismissRequest = { showSignOutDialog = false },
             title = { Text("Sign out") },
             text = {
-                Text("This will clear all credentials and enrolled teams from this device. You will need to re-enroll via QR code to use the app again.")
+                Text("This will clear all credentials and enrolled teams from this device. You will need to sign in again (Nostr, Google, or QR enrollment) to use the app.")
             },
             confirmButton = {
                 TextButton(onClick = {

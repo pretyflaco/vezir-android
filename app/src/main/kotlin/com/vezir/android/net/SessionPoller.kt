@@ -14,10 +14,12 @@ import java.io.IOException
  * Polls GET /api/sessions/{id} every [intervalMs] until the server reports
  * a terminal state. Server schema: vezir/server/queue.py:50-57:
  *
- *     queued | transcribing | needs_labeling | syncing | done | error
+ *     queued | transcribing | needs_labeling | syncing | done | error | empty
  *
- * 'done' and 'error' are terminal. The Linux GUI polls at 5s; we match
- * that to keep server load identical to one extra desktop client.
+ * 'done', 'error' and 'empty' are terminal. 'empty' (vezir >= 0.11.1) is a
+ * recording that contained no audio; it is never synced and has no
+ * artifacts. The Linux GUI polls at 5s; we match that to keep server load
+ * identical to one extra desktop client.
  */
 class SessionPoller(
     private val baseUrl: String,
@@ -27,7 +29,7 @@ class SessionPoller(
     private val intervalMs: Long = 5_000L,
 ) {
     companion object {
-        private val TERMINAL = setOf("done", "error")
+        private val TERMINAL = setOf("done", "error", "empty")
         private val json = Json { ignoreUnknownKeys = true }
     }
 

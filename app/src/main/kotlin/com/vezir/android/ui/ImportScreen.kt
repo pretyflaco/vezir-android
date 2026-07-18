@@ -30,40 +30,53 @@ import com.vezir.android.capture.ImportController
 fun ImportScreen(
     onCancel: () -> Unit,
     onImported: (uri: Uri, fileName: String) -> Unit,
+    onImportedMulti: (uris: List<Uri>, fileNames: List<String>) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val snapshot by ImportController.state.collectAsState()
 
-    val pickFile = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri == null) {
+    val pickFiles = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNullOrEmpty()) {
             onCancel()
             return@rememberLauncherForActivityResult
         }
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
+        val sources = uris.map { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            uri to (querySafName(context, uri) ?: "imported")
         }
-        val name = querySafName(context, uri) ?: "imported"
-        ImportController.startImport(context, uri, name)
+        if (sources.size == 1) {
+            ImportController.startImport(context, sources[0].first, sources[0].second)
+        } else {
+            ImportController.startMultiImport(context, sources)
+        }
     }
 
     var launched by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!launched && snapshot.state == ImportController.State.IDLE) {
             launched = true
-            pickFile.launch(arrayOf("audio/*", "video/*"))
+            pickFiles.launch(arrayOf("audio/*", "video/*"))
         }
     }
 
     LaunchedEffect(snapshot.state, snapshot.resultUri) {
         if (snapshot.state == ImportController.State.DONE && snapshot.resultUri != null) {
-            val uri = snapshot.resultUri!!
-            val name = snapshot.resultDisplayName ?: "vezir-import.ogg"
+            val uris = snapshot.resultUris
+            val names = snapshot.resultNames
             ImportController.acknowledge()
-            onImported(uri, name)
+            if (uris.size > 1) {
+                onImportedMulti(uris, names)
+            } else {
+                val uri = snapshot.resultUri!!
+                val name = snapshot.resultDisplayName ?: "vezir-import.ogg"
+                onImported(uri, name)
+            }
         }
     }
 
@@ -71,9 +84,10 @@ fun ImportScreen(
         CompactBrandHeader(title = "import")
 
         Text(
-            "Pick an existing audio or video file. Vezir encodes it to " +
-                "OGG/Opus on-device, then sends it through the same upload " +
-                "pipeline as a fresh recording.",
+            "Pick one or more existing audio or video files. Vezir encodes " +
+                "each to OGG/Opus on-device. Multiple files are combined into " +
+                "a single meeting, then sent through the same upload pipeline " +
+                "as a fresh recording.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -103,6 +117,12 @@ fun ImportScreen(
                         progress = { snapshot.progress.coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (snapshot.partCount > 1) {
+                        MonoStatus(
+                            "file ${snapshot.partIndex} of ${snapshot.partCount}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     MonoStatus(
                         snapshot.sourceName ?: "(unnamed)",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

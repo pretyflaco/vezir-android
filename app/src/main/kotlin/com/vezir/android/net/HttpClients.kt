@@ -1,8 +1,10 @@
 package com.vezir.android.net
 
+import com.vezir.android.BuildConfig
 import com.vezir.android.auth.TokenRefresher
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -36,8 +38,34 @@ object HttpClients {
     private fun baseClient(caPem: String?): OkHttpClient =
         baseClients.getOrPut(caPem?.hashCode()?.toString() ?: "system") {
             (caPem?.let { CaTrustManager.builderWithCa(it) }
-                ?: OkHttpClient.Builder()).build()
+                ?: OkHttpClient.Builder())
+                .addInterceptor(UserAgentInterceptor)
+                .build()
         }
+
+    /**
+     * Product User-Agent sent on every request.  vezir server >= 0.11.1
+     * records this as the session's ``client_agent`` and surfaces it in
+     * ``/api/sessions`` + TUI detail, so the desktop and Android clients
+     * are distinguishable server-side.  Mirrors the Python clients'
+     * ``vezir-cli/<version>`` convention with ``vezir-android/<version>``.
+     */
+    private val USER_AGENT = "vezir-android/${BuildConfig.VERSION_NAME}"
+
+    /**
+     * Adds our product [USER_AGENT] to every request, unless the caller
+     * already set one explicitly.  Installed on the shared base client so
+     * it survives all `newBuilder()`-derived per-use clients.
+     */
+    private object UserAgentInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val req = chain.request()
+            if (req.header("User-Agent") != null) return chain.proceed(req)
+            return chain.proceed(
+                req.newBuilder().header("User-Agent", USER_AGENT).build(),
+            )
+        }
+    }
 
     /**
      * Build an [OkHttpClient] that trusts the system CAs plus an

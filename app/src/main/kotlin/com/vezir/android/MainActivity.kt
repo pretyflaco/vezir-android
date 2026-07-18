@@ -39,6 +39,7 @@ import com.vezir.android.ui.SettingsScreen
 import com.vezir.android.ui.SetupScreen
 import com.vezir.android.ui.SplashScreen
 import com.vezir.android.ui.Tab
+import com.vezir.android.ui.UploadMultiScreen
 import com.vezir.android.ui.UploadScreen
 import com.vezir.android.ui.theme.VezirTheme
 import kotlinx.coroutines.launch
@@ -89,6 +90,15 @@ private sealed class Screen {
     data class Upload(
         val uri: Uri,
         val fileName: String,
+        val title: String?,
+        val summaryPreset: String?,
+        val autoLabel: Boolean,
+        val sync: Boolean,
+        val personal: Boolean,
+    ) : Screen()
+    data class UploadMulti(
+        val uris: List<Uri>,
+        val fileNames: List<String>,
         val title: String?,
         val summaryPreset: String?,
         val autoLabel: Boolean,
@@ -316,11 +326,35 @@ private fun AppRoot() {
                         ),
                     )
                 },
+                onImportedMulti = { uris, names ->
+                    replaceTop(
+                        Screen.UploadMulti(
+                            uris, names, null,
+                            prefs.summaryPreset, prefs.autoLabel, prefs.sync,
+                            personal = prefs.personal,
+                        ),
+                    )
+                },
             )
             is Screen.Upload -> UploadScreen(
                 prefs = prefs,
                 contentUri = s.uri,
                 fileName = s.fileName,
+                title = s.title,
+                summaryPreset = s.summaryPreset,
+                autoLabel = s.autoLabel,
+                sync = s.sync,
+                personal = s.personal,
+                onDismiss = { pop() },
+                onLabel = { sessionId -> push(Screen.Label(sessionId)) },
+                onSessionDetail = { sessionId ->
+                    replaceTop(Screen.SessionDetail(sessionId))
+                },
+            )
+            is Screen.UploadMulti -> UploadMultiScreen(
+                prefs = prefs,
+                uris = s.uris,
+                fileNames = s.fileNames,
                 title = s.title,
                 summaryPreset = s.summaryPreset,
                 autoLabel = s.autoLabel,

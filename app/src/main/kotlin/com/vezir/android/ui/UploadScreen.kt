@@ -272,3 +272,205 @@ fun UploadScreen(
 private fun formatKib(bytes: Long): String =
     if (bytes < 1024) "$bytes B"
     else "%.1f KiB".format(bytes / 1024.0)
+
+/**
+ * Multi-file variant of [UploadScreen]: uploads several transcoded OGG
+ * parts as ONE meeting via /upload/multi (vezir >= 0.9.0). Shares the
+ * [UploadController] snapshot, so progress/status/actions render the same
+ * way; only the startup call and the header differ.
+ */
+@Composable
+fun UploadMultiScreen(
+    prefs: Prefs,
+    uris: List<Uri>,
+    fileNames: List<String>,
+    title: String?,
+    summaryPreset: String?,
+    autoLabel: Boolean,
+    sync: Boolean,
+    personal: Boolean = false,
+    onDismiss: () -> Unit,
+    onLabel: ((String) -> Unit)? = null,
+    onSessionDetail: ((String) -> Unit)? = null,
+) {
+    val context = LocalContext.current
+    val snapshot by UploadController.state.collectAsState()
+    val cred = remember { prefs.activeCredential() }
+
+    LaunchedEffect(uris) {
+        val c = cred ?: return@LaunchedEffect
+        if (UploadController.state.value.state != UploadController.State.IDLE) {
+            return@LaunchedEffect
+        }
+        if (uris.isEmpty()) {
+            UploadController.setError("no files to upload")
+            return@LaunchedEffect
+        }
+        var token = c.token
+        if (com.vezir.android.auth.SessionExpiry.isExpired(token)) {
+            val refreshed = com.vezir.android.auth.TokenRefresher.refresh(token)
+            if (refreshed.isNullOrEmpty()) {
+                UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                return@LaunchedEffect
+            }
+            token = refreshed
+        }
+        val resilient = com.vezir.android.net.ResilientApi(
+            c.url, c.altUrls, token, c.id, c.caPem,
+        )
+        val uploadUrl = resilient.findReachableUrl() ?: c.url
+        UploadController.startMultiUpload(
+            context = context,
+            baseUrl = uploadUrl,
+            uris = uris,
+            fileNames = fileNames,
+            title = title,
+            summaryPreset = summaryPreset,
+            autoLabel = autoLabel,
+            sync = sync,
+            personal = personal,
+        )
+    }
+
+    // Auto-download artifacts when processing completes (matches single).
+    LaunchedEffect(snapshot.state, snapshot.serverStatus) {
+        if (snapshot.state == UploadController.State.DONE &&
+            snapshot.serverStatus == "done" &&
+            snapshot.sessionId != null) {
+            val c = cred ?: return@LaunchedEffect
+            val api = com.vezir.android.net.ResilientApi(
+                c.url, c.altUrls, c.token, c.id, c.caPem,
+            )
+            val puller = com.vezir.android.net.ArtifactPuller(
+                api, context, prefs.activeTeamId ?: "default",
+            )
+            try {
+                puller.pullSingleSession(snapshot.sessionId!!)
+            } catch (_: Exception) {}
+        }
+    }
+
+    val pct = if (snapshot.totalBytes > 0)
+        (snapshot.sentBytes.toFloat() / snapshot.totalBytes.toFloat()).coerceIn(0f, 1f)
+    else 0f
+
+    ScreenScaffold {
+        CompactBrandHeader(title = "upload")
+
+        Text(
+            "${uris.size} files \u2192 one meeting",
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            "to ${cred?.url ?: "(unset)"}",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!summaryPreset.isNullOrBlank()) {
+            Text(
+                "preset $summaryPreset",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "auto-label=$autoLabel  sync=$sync",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "%.0f%%".format(pct * 100),
+                style = MaterialTheme.typography.displaySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+            if (snapshot.totalBytes > 0) {
+                LinearProgressIndicator(
+                    progress = { pct },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                MonoStatus(
+                    "${formatKib(snapshot.sentBytes)} / ${formatKib(snapshot.totalBytes)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            MonoStatus(
+                "state ${snapshot.state.name.lowercase()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (snapshot.sessionId != null) {
+                MonoStatus(
+                    "session ${snapshot.sessionId}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (snapshot.serverStatus != null) {
+                MonoStatus(
+                    "server ${snapshot.serverStatus}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (snapshot.serverError != null) {
+                MonoStatus(
+                    "server error: ${snapshot.serverError}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (snapshot.errorMessage != null) {
+                MonoStatus(
+                    "error: ${snapshot.errorMessage}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
+        if (snapshot.serverStatus == "needs_labeling" &&
+            snapshot.sessionId != null &&
+            onLabel != null) {
+            Button(
+                onClick = { onLabel(snapshot.sessionId!!) },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Label speakers") }
+        }
+
+        if (snapshot.sessionId != null && onSessionDetail != null &&
+            snapshot.state != UploadController.State.UPLOADING) {
+            OutlinedButton(
+                onClick = {
+                    UploadController.reset(context)
+                    onSessionDetail(snapshot.sessionId!!)
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("View session") }
+        }
+
+        OutlinedButton(
+            onClick = {
+                UploadController.reset(context)
+                onDismiss()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                when (snapshot.state) {
+                    UploadController.State.UPLOADING -> "Cancel and back"
+                    UploadController.State.DONE,
+                    UploadController.State.ERROR -> "Done"
+                    else -> "Back"
+                }
+            )
+        }
+    }
+}

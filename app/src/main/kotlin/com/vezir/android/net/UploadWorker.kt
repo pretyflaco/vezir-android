@@ -56,9 +56,6 @@ class UploadWorker(
     override suspend fun doWork(): Result {
         setForeground(foregroundInfo())
 
-        val contentUri = inputData.getString(KEY_URI)?.let(Uri::parse)
-            ?: return Result.failure()
-        val fileName = inputData.getString(KEY_FILE_NAME) ?: "recording.ogg"
         val title = inputData.getString(KEY_TITLE)
         val summaryPreset = inputData.getString(KEY_PRESET)
         val autoLabel = inputData.getBoolean(KEY_AUTO_LABEL, true)
@@ -75,6 +72,56 @@ class UploadWorker(
         val tokenProvider: () -> String = {
             prefs.activeCredential()?.token ?: cred.token
         }
+
+        // Multi-file meeting path (vezir >= 0.9.0): a list of already-
+        // transcoded OGG parts uploaded as one meeting via /upload/multi.
+        // No resumable/tus path (the endpoint is one-shot multipart only,
+        // matching the desktop client).
+        val multiUris = inputData.getStringArray(KEY_MULTI_URIS)
+        if (multiUris != null && multiUris.isNotEmpty()) {
+            val multiNames = inputData.getStringArray(KEY_MULTI_NAMES)
+                ?: Array(multiUris.size) { "part-${it + 1}.ogg" }
+            val parts = multiUris.mapIndexed { i, u ->
+                Uploader.Part(Uri.parse(u), multiNames.getOrElse(i) { "part-${i + 1}.ogg" })
+            }
+            val uploader = Uploader(
+                baseUrl, tokenProvider, cred.id,
+                applicationContext.contentResolver, cred.caPem,
+            )
+            return when (val outcome = uploader.uploadMulti(
+                parts = parts,
+                title = title,
+                summaryPreset = summaryPreset,
+                autoLabel = autoLabel,
+                sync = sync,
+                personal = personal,
+                progress = { sent, total -> UploadController.publishProgress(sent, total) },
+                onRetry = { attempt, max, _ ->
+                    UploadController.publishRetry(attempt + 1, max, restarted = true)
+                },
+            )) {
+                is Uploader.Outcome.Success -> {
+                    UploadController.publishSuccess(
+                        baseUrl, tokenProvider(), cred.id,
+                        outcome.response.session_id,
+                        outcome.response.bytes, cred.caPem,
+                    )
+                    Result.success(
+                        workDataOf(OUT_SESSION_ID to outcome.response.session_id),
+                    )
+                }
+                is Uploader.Outcome.HttpError -> fail(
+                    if (outcome.code == 401) UploadController.SESSION_EXPIRED_MESSAGE
+                    else "HTTP ${outcome.code}: ${outcome.message}",
+                )
+                is Uploader.Outcome.Failed ->
+                    retryOrFail(outcome.cause.message ?: outcome.cause.toString())
+            }
+        }
+
+        val contentUri = inputData.getString(KEY_URI)?.let(Uri::parse)
+            ?: return Result.failure()
+        val fileName = inputData.getString(KEY_FILE_NAME) ?: "recording.ogg"
 
         val stateStore = UploadStateStore(applicationContext)
         val existing = stateStore.get(contentUri.toString(), baseUrl)
@@ -204,6 +251,8 @@ class UploadWorker(
 
         private const val KEY_URI = "uri"
         private const val KEY_FILE_NAME = "file_name"
+        private const val KEY_MULTI_URIS = "multi_uris"
+        private const val KEY_MULTI_NAMES = "multi_names"
         private const val KEY_TITLE = "title"
         private const val KEY_PRESET = "preset"
         private const val KEY_AUTO_LABEL = "auto_label"
@@ -234,6 +283,49 @@ class UploadWorker(
                     workDataOf(
                         KEY_URI to contentUri.toString(),
                         KEY_FILE_NAME to fileName,
+                        KEY_TITLE to title,
+                        KEY_PRESET to summaryPreset,
+                        KEY_AUTO_LABEL to autoLabel,
+                        KEY_SYNC to sync,
+                        KEY_PERSONAL to personal,
+                        KEY_BASE_URL to baseUrl,
+                    ),
+                )
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS,
+                )
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME, ExistingWorkPolicy.REPLACE, request,
+            )
+        }
+
+        /**
+         * Enqueue a multi-file meeting upload (vezir >= 0.9.0). All parts
+         * are sent as one meeting via /upload/multi in the order given.
+         * Uses the same unique-work slot as single uploads.
+         */
+        fun enqueueMulti(
+            context: Context,
+            baseUrl: String,
+            uris: List<Uri>,
+            fileNames: List<String>,
+            title: String?,
+            summaryPreset: String?,
+            autoLabel: Boolean,
+            sync: Boolean,
+            personal: Boolean,
+        ) {
+            val request = OneTimeWorkRequestBuilder<UploadWorker>()
+                .setInputData(
+                    workDataOf(
+                        KEY_MULTI_URIS to uris.map { it.toString() }.toTypedArray(),
+                        KEY_MULTI_NAMES to fileNames.toTypedArray(),
                         KEY_TITLE to title,
                         KEY_PRESET to summaryPreset,
                         KEY_AUTO_LABEL to autoLabel,

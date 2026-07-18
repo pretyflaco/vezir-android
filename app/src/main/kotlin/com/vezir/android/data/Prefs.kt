@@ -139,6 +139,51 @@ class Prefs(context: Context) : TeamCredentialBacking {
             }.apply()
         }
 
+    // ── Update check (v0.9.0) ──
+
+    /**
+     * Epoch-millis of the last GitHub-releases update check. Used to
+     * throttle the poll to once per [com.vezir.android.net.UpdateChecker]
+     * interval.  0 when never checked.
+     */
+    var updateLastCheckMs: Long
+        get() = prefs.getLong(KEY_UPDATE_LAST_CHECK, 0L)
+        set(value) { prefs.edit().putLong(KEY_UPDATE_LAST_CHECK, value).apply() }
+
+    /**
+     * Latest release tag seen from GitHub (e.g. "v0.9.1"), or null if the
+     * newest is not ahead of the running build.  Cached so the nudge shows
+     * offline between checks.
+     */
+    var updateLatestTag: String?
+        get() = prefs.getString(KEY_UPDATE_LATEST_TAG, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_UPDATE_LATEST_TAG)
+                else putString(KEY_UPDATE_LATEST_TAG, value)
+            }.apply()
+        }
+
+    /** HTML URL of the latest release, for the "view" action in the nudge. */
+    var updateLatestUrl: String?
+        get() = prefs.getString(KEY_UPDATE_LATEST_URL, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_UPDATE_LATEST_URL)
+                else putString(KEY_UPDATE_LATEST_URL, value)
+            }.apply()
+        }
+
+    /** User dismissed the nudge for this tag; don't show it again for it. */
+    var updateDismissedTag: String?
+        get() = prefs.getString(KEY_UPDATE_DISMISSED_TAG, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) remove(KEY_UPDATE_DISMISSED_TAG)
+                else putString(KEY_UPDATE_DISMISSED_TAG, value)
+            }.apply()
+        }
+
     // ── Multi-team credentials (v0.3.0+) ──
 
     /** JSON-encoded list of [TeamCredential] entries. */
@@ -250,6 +295,10 @@ class Prefs(context: Context) : TeamCredentialBacking {
         private const val KEY_SYNC = "vezir_sync"
         private const val KEY_TEAMS_JSON = "vezir_teams_json"
         private const val KEY_ACTIVE_TEAM_ID = "vezir_active_team_id"
+        private const val KEY_UPDATE_LAST_CHECK = "vezir_update_last_check"
+        private const val KEY_UPDATE_LATEST_TAG = "vezir_update_latest_tag"
+        private const val KEY_UPDATE_LATEST_URL = "vezir_update_latest_url"
+        private const val KEY_UPDATE_DISMISSED_TAG = "vezir_update_dismissed_tag"
         const val DEFAULT_PRESET = "confidential"
 
         /**

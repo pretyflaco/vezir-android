@@ -1,6 +1,7 @@
 package com.vezir.android.net
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -34,6 +35,9 @@ class RefreshApi(
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
         private val JSON_MEDIA = "application/json".toMediaType()
+
+        /** Backoff before the single lost-response retry (grace-window safe). */
+        private const val NETWORK_RETRY_DELAY_MS = 750L
     }
 
     // Deliberately a plain client (no auth Authenticator): the refresh
@@ -62,13 +66,37 @@ class RefreshApi(
         data class NetworkError(val cause: IOException) : Result()
     }
 
+    /**
+     * Exchange [refreshToken] for a fresh pair.
+     *
+     * Retries once on a *network* error.  vezir server >= 0.11.0 keeps a
+     * refresh **grace window** (``VEZIR_REFRESH_GRACE``, default 60s): a
+     * refresh token that was just consumed can be replayed within the
+     * window to re-issue the same pair, precisely so a client that lost the
+     * response to a network hiccup can retry safely (RFC 9700 lost-response
+     * handling).  We therefore retry a [Result.NetworkError] once.
+     *
+     * A [Result.HttpError] (notably 401) is NOT retried: a 401 means the
+     * token was rejected — replaying it would trip reuse detection and
+     * revoke the whole session family.  The caller must re-login.
+     */
     suspend fun refresh(refreshToken: String): Result = withContext(Dispatchers.IO) {
+        var last: Result = attempt(refreshToken)
+        if (last is Result.NetworkError) {
+            // Lost-response retry; safe inside the server grace window.
+            delay(NETWORK_RETRY_DELAY_MS)
+            last = attempt(refreshToken)
+        }
+        last
+    }
+
+    private fun attempt(refreshToken: String): Result {
         val payload = JSONObject().put("refresh_token", refreshToken).toString()
         val req = Request.Builder()
             .url(baseUrl.trimEnd('/') + "/api/auth/refresh")
             .post(payload.toRequestBody(JSON_MEDIA))
             .build()
-        runCatching {
+        return runCatching {
             client.newCall(req).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (resp.isSuccessful) {

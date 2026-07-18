@@ -63,6 +63,10 @@ fun SessionListScreen(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var pulling by remember { mutableStateOf(false) }
     var pullStatus by remember { mutableStateOf<String?>(null) }
+    // Update nudge: a newer GitHub release than the running build (v0.9.0).
+    var update by remember {
+        mutableStateOf<com.vezir.android.net.UpdateChecker.Available?>(null)
+    }
 
     if (cred == null || api == null) {
         Column(modifier = Modifier.fillMaxWidth().padding(32.dp),
@@ -221,6 +225,12 @@ fun SessionListScreen(
         }
     }
 
+    // Update nudge: throttled GitHub-releases check (network at most once
+    // per ~6h; otherwise served from the Prefs cache).
+    LaunchedEffect(Unit) {
+        update = com.vezir.android.net.UpdateChecker.check(prefs)
+    }
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -244,6 +254,55 @@ fun SessionListScreen(
             }
             IconButton(onClick = { refresh() }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+            }
+        }
+
+        update?.let { avail ->
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Update available: ${avail.tag}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Text(
+                        "A newer signed APK is on GitHub Releases.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        OutlinedButton(onClick = {
+                            prefs.updateDismissedTag = avail.tag
+                            update = null
+                        }) { Text("Dismiss") }
+                        val url = avail.htmlUrl
+                        if (url != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    runCatching {
+                                        ctx.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(url),
+                                            ),
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) { Text("View") }
+                        }
+                    }
+                }
             }
         }
 
@@ -362,6 +421,7 @@ fun StatusBadge(status: String) {
         "syncing" -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
         "done" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
         "error" -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
+        "empty" -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Card(
