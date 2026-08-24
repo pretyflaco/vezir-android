@@ -9,15 +9,19 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +37,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +108,10 @@ fun LabelScreen(
     val labelValues = remember { mutableStateMapOf<String, String>() }
     var playingSpeaker by remember { mutableStateOf<String?>(null) }
     var clipError by remember { mutableStateOf<String?>(null) }
+    // Segments dialog (v0.11.1): null = closed; loading/content per speaker.
+    var segmentsSpeaker by remember { mutableStateOf<String?>(null) }
+    var segmentsData by remember { mutableStateOf<LabelApi.SegmentsData?>(null) }
+    var segmentsError by remember { mutableStateOf<String?>(null) }
 
     // Fetch speakers on first composition.
     LaunchedEffect(sessionId) {
@@ -210,6 +219,20 @@ fun LabelScreen(
                             clipPlayer.stop()
                             playingSpeaker = null
                         },
+                        onMore = {
+                            segmentsSpeaker = speaker.id
+                            segmentsData = null
+                            segmentsError = null
+                            scope.launch {
+                                when (val r = api.getSegments(sessionId, speaker.id)) {
+                                    is LabelApi.Result.Ok -> segmentsData = r.data
+                                    is LabelApi.Result.HttpError ->
+                                        segmentsError = "${r.code} ${r.message}"
+                                    is LabelApi.Result.NetworkError ->
+                                        segmentsError = "Network error: ${r.cause.message}"
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -255,7 +278,57 @@ fun LabelScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Cancel") }
         }
+
+        // Segments dialog (v0.11.1): everything this speaker said.
+        segmentsSpeaker?.let { spId ->
+            AlertDialog(
+                onDismissRequest = { segmentsSpeaker = null },
+                title = { Text("$spId — all segments") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        when {
+                            segmentsError != null -> Text(
+                                "Could not load segments: ${segmentsError!!}",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            segmentsData == null -> CircularProgressIndicator()
+                            else -> {
+                                val d = segmentsData!!
+                                d.segments.forEach { seg ->
+                                    Text(
+                                        "[${fmtMmSs(seg.start)}]  ${seg.text}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                if (d.total > d.segments.size) {
+                                    Text(
+                                        "… (${d.total - d.segments.size} more not shown)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { segmentsSpeaker = null }) { Text("Close") }
+                },
+            )
+        }
     }
+}
+
+private fun fmtMmSs(seconds: Double): String {
+    val s = seconds.toInt().coerceAtLeast(0)
+    return "%02d:%02d".format(s / 60, s % 60)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -269,6 +342,7 @@ private fun SpeakerCard(
     isPlaying: Boolean,
     onPlay: () -> Unit,
     onStop: () -> Unit,
+    onMore: () -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -290,12 +364,18 @@ private fun SpeakerCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontFamily = FontFamily.Monospace,
                 )
-                if (audioAvailable) {
-                    IconButton(onClick = { if (isPlaying) onStop() else onPlay() }) {
-                        Icon(
-                            if (isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Stop" else "Play clip",
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // "More": show every segment this speaker said —
+                    // the single sample line is often not enough to
+                    // identify them (v0.11.1, needs server >= 0.15.0).
+                    TextButton(onClick = onMore) { Text("More") }
+                    if (audioAvailable) {
+                        IconButton(onClick = { if (isPlaying) onStop() else onPlay() }) {
+                            Icon(
+                                if (isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                contentDescription = if (isPlaying) "Stop" else "Play clip",
+                            )
+                        }
                     }
                 }
             }

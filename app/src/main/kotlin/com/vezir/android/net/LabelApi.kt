@@ -45,6 +45,21 @@ class LabelApi(
         val audio_available: Boolean = false,
     )
 
+    @Serializable
+    data class Segment(
+        val start: Double = 0.0,
+        val end: Double = 0.0,
+        val text: String = "",
+    )
+
+    /** v0.11.1: GET /label/{id}/segments/{speaker} (vezir server >= 0.15.0). */
+    @Serializable
+    data class SegmentsData(
+        val speaker_id: String,
+        val total: Int = 0,
+        val segments: List<Segment> = emptyList(),
+    )
+
     sealed class Result<out T> {
         data class Ok<T>(val data: T) : Result<T>()
         data class HttpError(val code: Int, val message: String) : Result<Nothing>()
@@ -105,4 +120,36 @@ class LabelApi(
     /** Build the URL for streaming a speaker's audio clip. */
     fun clipUrl(sessionId: String, speakerId: String): String =
         "${baseUrl.trimEnd('/')}/label/$sessionId/clip/$speakerId"
+
+    /**
+     * Fetch all transcript segments for a speaker (labeling aid — the
+     * "More" button).  Needs vezir server >= 0.15.0; older servers 404.
+     */
+    suspend fun getSegments(
+        sessionId: String,
+        speakerId: String,
+    ): Result<SegmentsData> = withContext(Dispatchers.IO) {
+        val req = HttpClients.authHeaders(
+            Request.Builder()
+                .url(
+                    "${baseUrl.trimEnd('/')}/label/$sessionId" +
+                        "/segments/${java.net.URLEncoder.encode(speakerId, "UTF-8")}",
+                ),
+            token, teamId,
+        ).get().build()
+        runCatching {
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string() ?: return@use Result.HttpError(
+                        resp.code, "empty response body",
+                    )
+                    Result.Ok(json.decodeFromString(SegmentsData.serializer(), body))
+                } else {
+                    Result.HttpError(resp.code, resp.message)
+                }
+            }
+        }.getOrElse { e ->
+            if (e is IOException) Result.NetworkError(e) else throw e
+        }
+    }
 }
