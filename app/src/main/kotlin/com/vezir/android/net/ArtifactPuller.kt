@@ -30,15 +30,6 @@ class ArtifactPuller(
     companion object {
         private const val MANIFEST_NAME = "pull-manifest.json"
         private val json = Json { ignoreUnknownKeys = true }
-
-        // Friendly names matching desktop vezir/client/artifacts.py
-        private val FRIENDLY_NAMES = mapOf(
-            "summary" to "summary.md",
-            "txt" to "transcript.txt",
-            "srt" to "transcript.srt",
-            "pdf" to "transcript.pdf",
-            "json" to "transcript.json",
-        )
     }
 
     data class PullProgress(
@@ -137,10 +128,18 @@ class ArtifactPuller(
     ): Int {
         var saved = 0
         for ((key, serverName) in session.artifactMap) {
-            val friendlyName = FRIENDLY_NAMES[key] ?: serverName
+            // v0.10.0: dated names (20260824_brainstorm_phoenix.pdf),
+            // mirroring desktop vezir/client/artifacts.py.  Prefer the
+            // server's Content-Disposition filename (v0.14.1+ servers);
+            // fall back to the local computation for older servers.
             val result = api.execute { it.downloadArtifact(session.id, serverName) }
-            if (result is SessionApi.Result.Ok && result.data.isNotEmpty()) {
-                if (saveToDocuments(dirname, friendlyName, result.data)) {
+            if (result is SessionApi.Result.Ok && result.data.bytes.isNotEmpty()) {
+                val friendlyName = result.data.filename.ifEmpty {
+                    ArtifactNames.friendlyName(
+                        serverName, session.created_at, session.title,
+                    )
+                }
+                if (saveToDocuments(dirname, friendlyName, result.data.bytes)) {
                     saved++
                 }
             }

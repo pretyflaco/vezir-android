@@ -30,6 +30,31 @@ class SessionApi(
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
         private val EMPTY_JSON = "{}".toRequestBody("application/json".toMediaType())
+
+        /**
+         * Extract the filename from a Content-Disposition header
+         * (``attachment; filename="20260824_brainstorm_phoenix.pdf"``, as
+         * sent by vezir-server v0.14.1+).  Returns null when absent.
+         */
+        fun filenameFromDisposition(disposition: String?): String? {
+            if (disposition.isNullOrBlank()) return null
+            // Prefer the RFC 5987 form, then the plain quoted form.
+            val utf8 = Regex("filename\\*=UTF-8''([^;]+)", RegexOption.IGNORE_CASE)
+                .find(disposition)?.groupValues?.get(1)
+            if (utf8 != null) {
+                return try {
+                    java.net.URLDecoder.decode(utf8, "UTF-8")
+                } catch (_: Exception) {
+                    utf8
+                }
+            }
+            val quoted = Regex("filename=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+                .find(disposition)?.groupValues?.get(1)
+            if (quoted != null) return quoted
+            val bare = Regex("filename=([^;\\s]+)", RegexOption.IGNORE_CASE)
+                .find(disposition)?.groupValues?.get(1)
+            return bare
+        }
     }
 
     private val client: OkHttpClient = externalClient
@@ -219,6 +244,38 @@ class SessionApi(
         }
 
     /**
+     * Re-run voiceprint auto-labeling for an already-transcribed session
+     * (vezir server >= 0.14.2: ``POST /api/sessions/{id}/auto-label``).
+     * Matches speakers against the team's voiceprint DB and applies
+     * confident names; unrecognized speakers stay raw and the session
+     * remains needs_labeling.  Explicit consent: overrides an upload-time
+     * auto-label opt-out.  When [sync] is true and every speaker is
+     * resolved, the session is also pushed to the team git repo.
+     */
+    suspend fun autoLabel(
+        sessionId: String,
+        sync: Boolean = false,
+    ): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            val obj = JSONObject()
+            if (sync) obj.put("sync", true)
+            val body = obj.toString().toRequestBody("application/json".toMediaType())
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/auto-label"),
+                token, teamId,
+            ).post(body).build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) Result.Ok(true)
+                    else Result.HttpError(resp.code, resp.message)
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
+
+    /**
      * Add, change, or clear a session's title after recording (vezir server
      * >= 0.12.0: ``POST /api/sessions/{id}/title``). A blank/null [title]
      * clears it. Auth mirrors delete: server admin OR original uploader
@@ -296,10 +353,13 @@ class SessionApi(
             }
         }
 
+    /** An artifact download: bytes plus the display filename. */
+    data class ArtifactDownload(val filename: String, val bytes: ByteArray)
+
     suspend fun downloadArtifact(
         sessionId: String,
         name: String,
-    ): Result<ByteArray> = withContext(Dispatchers.IO) {
+    ): Result<ArtifactDownload> = withContext(Dispatchers.IO) {
         val req = HttpClients.authHeaders(
             Request.Builder()
                 .url("${baseUrl.trimEnd('/')}/artifact/$sessionId/$name"),
@@ -308,7 +368,11 @@ class SessionApi(
         runCatching {
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
-                    Result.Ok(resp.body?.bytes() ?: ByteArray(0))
+                    val bytes = resp.body?.bytes() ?: ByteArray(0)
+                    val filename = filenameFromDisposition(
+                        resp.header("Content-Disposition"),
+                    ) ?: name
+                    Result.Ok(ArtifactDownload(filename, bytes))
                 } else {
                     Result.HttpError(resp.code, resp.message)
                 }

@@ -68,6 +68,9 @@ fun ArtifactViewerScreen(
     var content by remember { mutableStateOf<ByteArray?>(null) }
     var loading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    // Friendly filename from the server's Content-Disposition (v0.14.1+
+    // servers send YYYYMMDD_<title>.<ext>); falls back to the stored name.
+    var displayName by remember { mutableStateOf(artifactName) }
 
     val isPdf = artifactName.endsWith(".pdf", ignoreCase = true)
     val isText = !isPdf
@@ -77,12 +80,13 @@ fun ArtifactViewerScreen(
         errorMsg = null
         when (val result = api.execute { it.downloadArtifact(sessionId, artifactName) }) {
             is SessionApi.Result.Ok -> {
-                content = result.data
+                content = result.data.bytes
+                displayName = result.data.filename.ifEmpty { artifactName }
                 if (isPdf) {
                     // Write to cache and open with external viewer.
                     withContext(Dispatchers.IO) {
-                        val f = File(context.cacheDir, artifactName)
-                        f.writeBytes(result.data)
+                        val f = File(context.cacheDir, displayName)
+                        f.writeBytes(result.data.bytes)
                         val uri = FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
@@ -118,7 +122,7 @@ fun ArtifactViewerScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
-                artifactName,
+                displayName,
                 style = MaterialTheme.typography.titleMedium,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f),
@@ -128,7 +132,7 @@ fun ArtifactViewerScreen(
                 IconButton(onClick = {
                     scope.launch {
                         withContext(Dispatchers.IO) {
-                            val f = File(context.cacheDir, artifactName)
+                            val f = File(context.cacheDir, displayName)
                             f.writeBytes(content!!)
                             val uri = FileProvider.getUriForFile(
                                 context,
@@ -141,7 +145,7 @@ fun ArtifactViewerScreen(
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(
-                                Intent.createChooser(intent, "Share $artifactName"),
+                                Intent.createChooser(intent, "Share $displayName"),
                             )
                         }
                     }
@@ -154,7 +158,7 @@ fun ArtifactViewerScreen(
                         withContext(Dispatchers.IO) {
                             try {
                                 val values = ContentValues().apply {
-                                    put(MediaStore.Downloads.DISPLAY_NAME, artifactName)
+                                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                                     put(
                                         MediaStore.Downloads.MIME_TYPE,
                                         if (isPdf) "application/pdf" else "text/plain",
