@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -267,6 +268,7 @@ fun SessionDetailScreen(
         var showTitleDialog by remember { mutableStateOf(false) }
         var showDeleteDialog by remember { mutableStateOf(false) }
         var showSyncDialog by remember { mutableStateOf(false) }
+        var showAutoLabelDialog by remember { mutableStateOf(false) }
 
         // Primary action: Label speakers (prominent when needed).
         if (s.status == "needs_labeling") {
@@ -539,6 +541,66 @@ fun SessionDetailScreen(
             )
         }
 
+        // Auto-label dialog (v0.11.0): re-run voiceprint matching with an
+        // optional sync-on-resolve choice.  Needs vezir server >= 0.14.2.
+        if (showAutoLabelDialog) {
+            var syncOnResolve by remember { mutableStateOf(false) }
+            AlertDialog(
+                onDismissRequest = { showAutoLabelDialog = false },
+                title = { Text("Auto-label speakers") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "Match this session's speakers against the " +
+                                "team's voiceprint DB and apply confident " +
+                                "names. Unrecognized speakers stay raw.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = syncOnResolve,
+                                onCheckedChange = { syncOnResolve = it },
+                            )
+                            Text(
+                                "Sync to team repo if every speaker is resolved",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showAutoLabelDialog = false
+                            scope.launch {
+                                actionBusy = true
+                                when (
+                                    val r = api.execute {
+                                        it.autoLabel(sessionId, sync = syncOnResolve)
+                                    }
+                                ) {
+                                    is SessionApi.Result.Ok ->
+                                        actionMsg = "Auto-label queued"
+                                    is SessionApi.Result.HttpError ->
+                                        actionMsg =
+                                            "Auto-label failed: ${r.code} ${r.message}"
+                                    is SessionApi.Result.NetworkError ->
+                                        actionMsg =
+                                            "Network error: ${r.cause.message}"
+                                }
+                                refresh()
+                                actionBusy = false
+                            }
+                        },
+                        enabled = !actionBusy,
+                    ) { Text("Run") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAutoLabelDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
+
         // Actions menu button.
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -579,6 +641,20 @@ fun SessionDetailScreen(
                         onClick = {
                             menuExpanded = false
                             onLabel(sessionId)
+                        },
+                    )
+                }
+                // Auto-label (v0.11.0): re-run voiceprint matching against
+                // the team DB.  Needs vezir server >= 0.14.2.
+                if (s.status in listOf(
+                        "needs_labeling", "done", "error", "sync_failed",
+                    )
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Auto-label speakers\u2026") },
+                        onClick = {
+                            menuExpanded = false
+                            showAutoLabelDialog = true
                         },
                     )
                 }

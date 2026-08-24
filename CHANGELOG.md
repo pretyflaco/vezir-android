@@ -6,6 +6,34 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.11.0 — dated artifact filenames + auto-label
+
+Pairs with vezir-server 0.14.2.  Works against older servers too (the
+auto-label action requires server >= 0.14.2 and returns an error message
+against older ones).
+
+### Changed
+
+- **Downloaded artifacts are named `YYYYMMDD_<title_slug>.<ext>`** instead
+  of generic names (`summary.md`, `transcript.pdf`, ...).  Example:
+  `20260824_brainstorm_phoenix.pdf`.  Date = session `created_at` in the
+  device timezone; untitled sessions fall back to `<date>_recording`.
+  Applies to the pull flow (`Documents/Vezir/<team>/...`).
+- **Artifact viewer / share / save-to-Downloads use the server's
+  `Content-Disposition` filename** (vezir-server 0.14.1+ sends the dated
+  name).  Older servers keep the previous stored-name behavior.
+- Previously pulled sessions are re-pulled under the new names on the
+  next pull (the manifest tracks whole sessions, not filenames).
+
+### Added
+
+- **"Auto-label speakers…" action** on the session detail screen: re-runs
+  voiceprint matching against the team's DB for a session stuck in
+  `needs_labeling` (or re-labelable terminal states), with an optional
+  "sync to team repo if fully resolved" choice.  Requires vezir-server
+  >= 0.14.2.
+
+
 > **Note (2026-05-24):** the upstream meeting-transcription pipeline
 > was renamed `meetscribe` → `millet` (named after the Ottoman millet
 > system) in vezir 0.4.0.  Existing Android sessions and the HTTP API
