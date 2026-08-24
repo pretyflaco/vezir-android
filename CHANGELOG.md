@@ -6,6 +6,17 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.11.1 — more segments on the label screen
+
+### Added
+
+- **"More" on each speaker card** in the label screen: shows every
+  transcript segment that speaker said (timestamped, scrollable dialog).
+  The single sample line is often not enough to identify a speaker.
+  Requires vezir-server >= 0.15.0 (`GET /label/{id}/segments/{speaker}`);
+  older servers show an error message in the dialog.
+
+
 ## 0.11.0 — dated artifact filenames + auto-label
 
 Pairs with vezir-server 0.14.2.  Works against older servers too (the
