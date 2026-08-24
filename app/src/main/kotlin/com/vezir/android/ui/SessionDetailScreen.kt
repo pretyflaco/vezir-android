@@ -630,7 +630,7 @@ fun SessionDetailScreen(
                         },
                     )
                 }
-                if (s.status in listOf("done", "error", "needs_labeling")) {
+                if (s.status in listOf("done", "error", "needs_labeling", "imported")) {
                     DropdownMenuItem(
                         text = {
                             Text(
@@ -648,6 +648,7 @@ fun SessionDetailScreen(
                 // the team DB.  Needs vezir server >= 0.14.2.
                 if (s.status in listOf(
                         "needs_labeling", "done", "error", "sync_failed",
+                        "imported",
                     )
                 ) {
                     DropdownMenuItem(

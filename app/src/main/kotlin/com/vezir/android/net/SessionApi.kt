@@ -90,7 +90,8 @@ class SessionApi(
             }
 
         val isPersonal: Boolean get() = (personal ?: 0) != 0
-        val isTerminal: Boolean get() = status in setOf("done", "error", "empty")
+        val isTerminal: Boolean get() =
+            status in setOf("done", "error", "empty", "imported")
     }
 
     @Serializable

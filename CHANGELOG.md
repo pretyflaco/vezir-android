@@ -6,6 +6,16 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.11.2 — imported session support
+
+### Added
+
+- **Imported sessions** (vezir-server >= 0.16.0): meetings backfilled via
+  `vezir import` (status `imported`) render correctly, are treated as
+  terminal (no endless polling), and offer Label / Auto-label / Sync
+  actions like any finished session.
+
+
 ## 0.11.1 — more segments on the label screen
 
 ### Added

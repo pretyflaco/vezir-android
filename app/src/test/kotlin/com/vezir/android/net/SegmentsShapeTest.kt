@@ -42,4 +42,15 @@ class SegmentsShapeTest {
         assertEquals("Juan Pablo", r.speaker_id)
         assertEquals("Hola", r.segments[0].text)
     }
+
+    // v0.11.2: imported sessions (vezir server >= 0.16.0 backfills) are
+    // terminal — the detail screen must not poll/refresh them forever.
+    @Test
+    fun importedStatusIsTerminal() {
+        val raw = """
+            {"id":"01IMP","status":"imported","artifacts":"{}"}
+        """.trimIndent()
+        val s = json.decodeFromString(SessionApi.Session.serializer(), raw)
+        org.junit.Assert.assertTrue(s.isTerminal)
+    }
 }
