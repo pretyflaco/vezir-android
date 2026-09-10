@@ -84,10 +84,12 @@ fun ImportScreen(
         CompactBrandHeader(title = "import")
 
         Text(
-            "Pick one or more existing audio or video files. Vezir encodes " +
-                "each to OGG/Opus on-device. Multiple files are combined into " +
-                "a single meeting, then sent through the same upload pipeline " +
-                "as a fresh recording.",
+            "Pick one or more existing audio files, or a single screen " +
+                "recording (MP4). Audio is encoded to OGG/Opus on-device; " +
+                "an MP4 is sent as-is so the server can pull video frames. " +
+                "Multiple audio files are combined into a single meeting, " +
+                "then sent through the same upload pipeline as a fresh " +
+                "recording.",
             style = MaterialTheme.typography.bodyMedium,
         )
 

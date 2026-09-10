@@ -101,6 +101,10 @@ object ImportController {
      * exposed via [Snapshot.resultUris] / [Snapshot.resultNames]. A single
      * URI falls through to the same [DONE] shape as [startImport] so the
      * single-file caller keeps working.
+     *
+     * Video sources (mp4 passthrough, v0.12.0) are single-file only: the
+     * server's multi endpoint accepts one shared container per meeting and
+     * rejects video parts — import screen recordings one at a time.
      */
     fun startMultiImport(context: Context, sources: List<Pair<Uri, String?>>) {
         job?.cancel()
@@ -108,12 +112,27 @@ object ImportController {
             _state.value = Snapshot(state = State.ERROR, errorMessage = "no files selected")
             return
         }
+        val appCtx = context.applicationContext
+        val hasVideo = sources.any { (uri, _) ->
+            runCatching {
+                appCtx.contentResolver.getType(uri)
+                    ?.lowercase(java.util.Locale.US)
+                    ?.startsWith("video/")
+            }.getOrNull() == true
+        }
+        if (hasVideo && sources.size > 1) {
+            _state.value = Snapshot(
+                state = State.ERROR,
+                errorMessage = "screen recordings import one at a time — " +
+                    "select the video without other files",
+            )
+            return
+        }
         _state.value = Snapshot(
             state = State.IMPORTING,
             partIndex = 0,
             partCount = sources.size,
         )
-        val appCtx = context.applicationContext
         job = scope.launch {
             val uris = mutableListOf<Uri>()
             val names = mutableListOf<String>()

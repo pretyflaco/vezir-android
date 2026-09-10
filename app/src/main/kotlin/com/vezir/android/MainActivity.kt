@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
         com.vezir.android.auth.TokenRefresher.init(
             TeamCredentialStore(Prefs.get(applicationContext)),
         )
+        handleShareIntent(intent)
         setContent {
             VezirTheme {
                 Surface(
@@ -74,6 +75,31 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    /** ACTION_SEND (video/mp4) → hand the stream URI to the import flow. */
+    private fun handleShareIntent(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_SEND) return
+        val uri = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
+        } ?: return
+        ShareInbox.incoming.value = uri
+    }
+}
+
+/**
+ * One-slot mailbox for share-target URIs (v0.12.0).  MainActivity writes
+ * on ACTION_SEND; AppRoot consumes (starts the import flow) and clears.
+ */
+object ShareInbox {
+    val incoming = kotlinx.coroutines.flow.MutableStateFlow<Uri?>(null)
 }
 
 private const val DEFAULT_SERVER_URL = "https://vezir.twentyone.ist"
@@ -203,6 +229,22 @@ private fun AppRoot() {
             }
             com.vezir.android.auth.AuthState.clear()
         }
+    }
+
+    // Share target (v0.12.0): a video/mp4 ACTION_SEND routes straight into
+    // the import flow (mp4 passthrough → upload). Held until configured —
+    // after login the effect re-fires and proceeds.
+    val sharedUri by ShareInbox.incoming.collectAsState()
+    LaunchedEffect(sharedUri, prefs.isConfigured()) {
+        val uri = sharedUri ?: return@LaunchedEffect
+        if (!prefs.isConfigured()) return@LaunchedEffect
+        ShareInbox.incoming.value = null
+        val name = queryDisplayName(context, uri) ?: "shared.mp4"
+        com.vezir.android.capture.ImportController.startImport(context, uri, name)
+        currentTab = Tab.Record
+        stack.clear()
+        stack.add(Screen.Record)
+        push(Screen.Import)
     }
 
     fun switchToTeam(teamId: String) {
@@ -437,3 +479,15 @@ private fun AppRoot() {
         } // Box
     } // Scaffold
 } // AppRoot
+
+/** Best-effort DISPLAY_NAME lookup for a share-target content URI. */
+private fun queryDisplayName(context: android.content.Context, uri: Uri): String? {
+    return try {
+        context.contentResolver.query(
+            uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null, null, null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    } catch (_: Exception) { null }
+}

@@ -88,6 +88,7 @@ object UploadController {
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
+        summaryTemplate: String? = null,
     ) {
         pollJob?.cancel()
         pollJob = null
@@ -95,6 +96,7 @@ object UploadController {
         UploadWorker.enqueue(
             context, baseUrl, contentUri, fileName, title,
             summaryPreset, autoLabel, sync, personal,
+            summaryTemplate = summaryTemplate,
         )
     }
 
@@ -112,6 +114,7 @@ object UploadController {
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
+        summaryTemplate: String? = null,
     ) {
         pollJob?.cancel()
         pollJob = null
@@ -119,6 +122,7 @@ object UploadController {
         UploadWorker.enqueueMulti(
             context, baseUrl, uris, fileNames, title,
             summaryPreset, autoLabel, sync, personal,
+            summaryTemplate = summaryTemplate,
         )
     }
 

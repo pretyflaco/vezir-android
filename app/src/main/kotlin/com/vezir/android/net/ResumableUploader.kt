@@ -115,6 +115,7 @@ class ResumableUploader(
         fileName: String,
         title: String?,
         summaryPreset: String? = null,
+        summaryTemplate: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
@@ -159,8 +160,13 @@ class ResumableUploader(
             )
                 .addHeader("Upload-Length", total.toString())
                 .addHeader("Upload-Filename", fileName)
-                .addHeader("Upload-Content-Type", "audio/ogg")
-                .post(formBody(title, summaryPreset, autoLabel, sync, personal))
+                // v0.12.0: per-file MIME (video/mp4 for screen recordings);
+                // the server derives the on-disk extension from it.
+                .addHeader(
+                    "Upload-Content-Type",
+                    Uploader.mediaTypeForFileName(fileName).toString(),
+                )
+                .post(formBody(title, summaryPreset, summaryTemplate, autoLabel, sync, personal))
                 .build()
 
             try {
@@ -284,6 +290,7 @@ class ResumableUploader(
     private fun formBody(
         title: String?,
         summaryPreset: String?,
+        summaryTemplate: String?,
         autoLabel: Boolean,
         sync: Boolean,
         personal: Boolean,
@@ -291,6 +298,7 @@ class ResumableUploader(
         val b = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
         if (!title.isNullOrBlank()) b.addFormDataPart("title", title)
         if (!summaryPreset.isNullOrBlank()) b.addFormDataPart("summary_preset", summaryPreset)
+        if (!summaryTemplate.isNullOrBlank()) b.addFormDataPart("summary_template", summaryTemplate)
         b.addFormDataPart("auto_label", if (autoLabel) "true" else "false")
         b.addFormDataPart("sync", if (sync) "true" else "false")
         b.addFormDataPart("personal", if (personal) "true" else "false")

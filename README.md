@@ -94,8 +94,13 @@ Build host: JDK 17, Android SDK with `platforms/android-35` +
 
 ### Signing
 
-The release config reads `keystore.properties` (gitignored) next to
-`build.gradle.kts`:
+The release config reads `keystore.properties` (gitignored) from, in
+order:
+
+1. `$VEZIR_ANDROID_KEYSTORE_PROPS` (explicit override),
+2. `~/.android-keystores/vezir/keystore.properties` (canonical — outside
+   the working tree since 0.8.0, so it can't be committed by accident),
+3. `<repo>/keystore.properties` (legacy fallback; discouraged).
 
 ```properties
 storeFile=/absolute/path/to/vezir-release.jks
@@ -107,6 +112,8 @@ keyPassword=...
 Without it, `assembleRelease` falls back to the debug keystore so CI/clones
 still build. Generate a keystore once with `keytool -genkey -v -keystore
 vezir-release.jks -keyalg RSA -keysize 4096 -validity 10000 -alias vezir`.
+Each release ships the APK plus a `.sha256` sidecar on the GitHub Release;
+the in-app update check picks up new releases automatically.
 
 ## Security posture
 

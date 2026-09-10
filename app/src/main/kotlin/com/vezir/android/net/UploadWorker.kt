@@ -58,6 +58,7 @@ class UploadWorker(
 
         val title = inputData.getString(KEY_TITLE)
         val summaryPreset = inputData.getString(KEY_PRESET)
+        val summaryTemplate = inputData.getString(KEY_TEMPLATE)
         val autoLabel = inputData.getBoolean(KEY_AUTO_LABEL, true)
         val sync = inputData.getBoolean(KEY_SYNC, true)
         val personal = inputData.getBoolean(KEY_PERSONAL, false)
@@ -92,6 +93,7 @@ class UploadWorker(
                 parts = parts,
                 title = title,
                 summaryPreset = summaryPreset,
+                summaryTemplate = summaryTemplate,
                 autoLabel = autoLabel,
                 sync = sync,
                 personal = personal,
@@ -139,7 +141,7 @@ class UploadWorker(
 
         if (resumable.isSupported()) {
             when (val o = resumable.upload(
-                contentUri, fileName, title, summaryPreset,
+                contentUri, fileName, title, summaryPreset, summaryTemplate,
                 autoLabel, sync, personal,
                 progress = progress, onRetry = onRetry,
                 existingUploadId = existing?.uploadId,
@@ -179,6 +181,7 @@ class UploadWorker(
             fileName = fileName,
             title = title,
             summaryPreset = summaryPreset,
+            summaryTemplate = summaryTemplate,
             autoLabel = autoLabel,
             sync = sync,
             personal = personal,
@@ -255,6 +258,7 @@ class UploadWorker(
         private const val KEY_MULTI_NAMES = "multi_names"
         private const val KEY_TITLE = "title"
         private const val KEY_PRESET = "preset"
+        private const val KEY_TEMPLATE = "template"
         private const val KEY_AUTO_LABEL = "auto_label"
         private const val KEY_SYNC = "sync"
         private const val KEY_PERSONAL = "personal"
@@ -277,6 +281,7 @@ class UploadWorker(
             autoLabel: Boolean,
             sync: Boolean,
             personal: Boolean,
+            summaryTemplate: String? = null,
         ) {
             val request = OneTimeWorkRequestBuilder<UploadWorker>()
                 .setInputData(
@@ -285,6 +290,7 @@ class UploadWorker(
                         KEY_FILE_NAME to fileName,
                         KEY_TITLE to title,
                         KEY_PRESET to summaryPreset,
+                        KEY_TEMPLATE to summaryTemplate,
                         KEY_AUTO_LABEL to autoLabel,
                         KEY_SYNC to sync,
                         KEY_PERSONAL to personal,
@@ -320,6 +326,7 @@ class UploadWorker(
             autoLabel: Boolean,
             sync: Boolean,
             personal: Boolean,
+            summaryTemplate: String? = null,
         ) {
             val request = OneTimeWorkRequestBuilder<UploadWorker>()
                 .setInputData(
@@ -328,6 +335,7 @@ class UploadWorker(
                         KEY_MULTI_NAMES to fileNames.toTypedArray(),
                         KEY_TITLE to title,
                         KEY_PRESET to summaryPreset,
+                        KEY_TEMPLATE to summaryTemplate,
                         KEY_AUTO_LABEL to autoLabel,
                         KEY_SYNC to sync,
                         KEY_PERSONAL to personal,

@@ -6,6 +6,59 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.12.0 — screen recordings: share in, pass through, record natively
+
+The screenrecording-driven iteration loop on device (pairs with
+vezir-server >= 0.18.0 + millet-pipeline >= 0.17.0): narrated demo videos
+reach the server untouched, get transcribed, get a PNG frame at every
+narrated cue, and (optionally) an `iteration-plan` summary.
+
+### Added
+
+- **Share target for `video/mp4`** (Tier 1): Samsung screen recorder →
+  Share → Vezir routes the MP4 straight into the import flow and on to
+  upload.
+- **MP4 import pass-through** (Tier 1): `AudioImporter` no longer
+  transcodes screen recordings to Opus on-device (which silently
+  discarded the video).  An MP4 (MIME or `ftyp` magic) is byte-copied
+  into `Movies/Vezir/` — the server extracts the audio track for
+  transcription AND pulls cue frames from the source video.  Video
+  imports are single-file (the server's multi endpoint rejects video
+  parts).
+- **Native "Record screen + mic (MP4)" mode** (Tier 2): new
+  `ScreenCaptureService` mirroring `CaptureService`'s lifecycle
+  (start/stop/pause, 3 h recorded cap, persistent notification, shared
+  `CaptureController` state).  Pipeline: `MediaProjection.
+  createVirtualDisplay()` → MediaCodec H.264 surface encoder + mic
+  `AudioRecord` → AAC-LC → `MediaMuxer` → MP4 in `Movies/Vezir/`.  No new
+  third-party dependencies.  Pause discards audio (sample-counter PTS
+  stays continuous) and drains-but-drops video frames (paused time is
+  subtracted from the video timeline, so the MP4 has no gaps).
+- **Iteration-plan template for video uploads**: new sticky toggle
+  (Record screen, default ON) — MP4/MOV uploads send
+  `summary_template=iteration-plan` (server >= 0.18.0), producing
+  `<base>.iteration-plan.md` next to the regular summary.  Threaded
+  end-to-end (UploadScreen → UploadController → UploadWorker →
+  Uploader/ResumableUploader form field + per-file multipart MIME and
+  tus `Upload-Content-Type`, replacing the hardcoded `audio/ogg`).
+- **RecordingStorage** parameterized by MIME (audio → `Music/Vezir`,
+  video → `Movies/Vezir`) and exposes a write FileDescriptor for
+  MediaMuxer.
+- **Artifact naming**: pulled `*.iteration-plan.md` artifacts get the
+  dated friendly name with the `.iteration-plan.md` suffix preserved.
+
+### Fixed
+
+- `ArtifactNames.sessionDate` used `LocalDate.ofInstant` (API 34+) on an
+  app with minSdk 29 — pre-existing lint failure on newer AGP; now uses
+  the equivalent `atZone().toLocalDate()` (API 26+).
+
+### Tests
+
+- 4 new JVM test files: `ftyp` magic detection, per-filename upload MIME
+  mapping, iteration-plan template resolution, screen-video size scaling.
+
+
 ## 0.11.2 — imported session support
 
 ### Added

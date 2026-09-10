@@ -22,6 +22,8 @@ object ArtifactNames {
     // extension used with the stem.  ".json" must come AFTER
     // ".frontmatter.json" to avoid shadowing it.
     private val EXTENSIONS = listOf(
+        // Template summaries (desktop vezir 0.18.0) before the plain summary.
+        ".iteration-plan.md" to ".iteration-plan.md",
         ".summary.md" to ".md",
         ".frontmatter.json" to ".frontmatter.json",
         ".srt" to ".srt",
@@ -38,7 +40,9 @@ object ArtifactNames {
                 var clean = ts.replace("Z", "+00:00")
                 if ("T" !in clean) clean += "T00:00:00"
                 val instant = OffsetDateTime.parse(clean).toInstant()
-                return LocalDate.ofInstant(instant, ZoneId.systemDefault())
+                // LocalDate.ofInstant requires API 34; atZone().toLocalDate()
+                // is equivalent and works on API 26+ (our min is 29).
+                return instant.atZone(ZoneId.systemDefault()).toLocalDate()
                     .format(DateTimeFormatter.BASIC_ISO_DATE)
             } catch (_: Exception) {
                 // fall through to today

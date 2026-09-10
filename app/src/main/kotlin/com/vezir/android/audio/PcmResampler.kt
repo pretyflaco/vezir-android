@@ -181,6 +181,18 @@ fun looksLikeOggs(data: ByteArray, length: Int = data.size): Boolean {
         data[2] == 'g'.code.toByte() && data[3] == 'S'.code.toByte()
 }
 
+/**
+ * True if [data] starts with an ISO-BMFF "ftyp" box (MP4/MOV): a 4-byte
+ * box size followed by the box type "ftyp" at bytes 4..8. Covers both the
+ * mp4 and the QuickTime ("qt  ") brands — the vezir server uses the same
+ * check (vezir/server/uploads.py, v0.18.0).
+ */
+fun looksLikeFtyp(data: ByteArray, length: Int = data.size): Boolean {
+    if (length < 8) return false
+    return data[4] == 'f'.code.toByte() && data[5] == 't'.code.toByte() &&
+        data[6] == 'y'.code.toByte() && data[7] == 'p'.code.toByte()
+}
+
 /** RMS of an Int16 mono buffer in dBFS, clamped to [-90, 0]. */
 fun rmsDbfs(samples: ShortArray, count: Int): Float {
     if (count <= 0) return -90f

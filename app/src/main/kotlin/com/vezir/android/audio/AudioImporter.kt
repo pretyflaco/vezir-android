@@ -16,15 +16,21 @@ import java.util.Locale
 import kotlin.math.max
 
 /**
- * Imports an existing audio source (Samsung screen-recorder MP4, voice
- * memo M4A, prior Vezir OGG, etc.) into a fresh OGG/Opus 16 kHz mono
- * file in `Music/Vezir/`. From there the regular [Uploader] takes over.
+ * Imports an existing audio/video source into the user's Vezir library.
+ * From there the regular [Uploader] takes over.
  *
- * Two code paths:
+ * Three code paths:
  *
  *  - **OGG passthrough**: input MIME is `audio/ogg`. We don't decode;
  *    we stream-copy the bytes into [RecordingStorage] so the imported
  *    file shows up in the user's library next to native recordings.
+ *
+ *  - **MP4 passthrough (v0.12.0)**: input MIME is `video/mp4` (or the
+ *    file has an ISO-BMFF `ftyp` header) — e.g. a Samsung screen-recorder
+ *    MP4 shared into Vezir. The video is byte-copied UNTOUCHED into
+ *    `Movies/Vezir/`: the server (vezir >= 0.18.0) extracts the audio
+ *    track for transcription AND needs the source video to pull cue
+ *    frames. Transcoding on-device would destroy the frames.
  *
  *  - **Transcode**: anything else. MediaExtractor selects the first
  *    audio track, MediaCodec decodes it to PCM Int16, the existing
@@ -66,27 +72,35 @@ class AudioImporter(
         val mime = resolver.getType(source)?.lowercase(Locale.US)
         Log.i(TAG, "import start uri=$source mime=$mime")
 
-        val displayName = "vezir-import-${stamp()}.ogg"
-
         return when {
             mime == "audio/ogg" || hasOggsMagic(resolver, source) -> {
-                passthroughOgg(resolver, source, displayName, onProgress)
+                passthrough(
+                    resolver, source, "vezir-import-${stamp()}.ogg",
+                    RecordingStorage.MIME_OGG, onProgress,
+                )
+            }
+            mime == "video/mp4" || hasFtypMagic(resolver, source) -> {
+                passthrough(
+                    resolver, source, "vezir-import-${stamp()}.mp4",
+                    RecordingStorage.MIME_MP4, onProgress,
+                )
             }
             else -> {
-                transcode(source, displayName, onProgress)
+                transcode(source, "vezir-import-${stamp()}.ogg", onProgress)
             }
         }
     }
 
-    // ─────────────────────── OGG passthrough ───────────────────────
+    // ─────────────────────── passthrough (OGG / MP4) ───────────────────────
 
-    private fun passthroughOgg(
+    private fun passthrough(
         resolver: ContentResolver,
         source: Uri,
         displayName: String,
+        mimeType: String,
         onProgress: Progress,
     ): Result {
-        val target = RecordingStorage.create(context, displayName)
+        val target = RecordingStorage.create(context, displayName, mimeType)
         val totalBytes: Long = try {
             resolver.openAssetFileDescriptor(source, "r")?.use { it.length } ?: -1L
         } catch (_: Exception) { -1L }
@@ -123,6 +137,17 @@ class AudioImporter(
                 val header = ByteArray(4)
                 val n = input.read(header)
                 n >= 4 && looksLikeOggs(header, n)
+            }
+        } catch (_: Exception) { false }
+    }
+
+    private fun hasFtypMagic(resolver: ContentResolver, source: Uri): Boolean {
+        return try {
+            resolver.openInputStream(source).use { input ->
+                if (input == null) return false
+                val header = ByteArray(8)
+                val n = input.read(header)
+                n >= 8 && looksLikeFtyp(header, n)
             }
         } catch (_: Exception) { false }
     }

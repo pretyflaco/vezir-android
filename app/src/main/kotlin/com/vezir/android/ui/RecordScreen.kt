@@ -99,6 +99,10 @@ fun RecordScreen(
     var autoLabel by remember { mutableStateOf(prefs.autoLabel) }
     var sync by remember { mutableStateOf(prefs.sync) }
     var personal by remember { mutableStateOf(prefs.personal) }
+    // v0.12.0: screen+mic → MP4 mode (Tier 2 screen capture) and the
+    // iteration-plan template toggle for video uploads. Both sticky.
+    var screenMode by remember { mutableStateOf(prefs.screenMode) }
+    var iterationPlan by remember { mutableStateOf(prefs.iterationPlan) }
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -133,9 +137,16 @@ fun RecordScreen(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val startIntent = CaptureService.startIntent(
-                context, result.resultCode, result.data!!, title.ifBlank { null },
-            )
+            // One consent token serves both services: audio CaptureService
+            // (playback capture) or ScreenCaptureService (video+mic).
+            val startIntent = if (screenMode)
+                com.vezir.android.capture.ScreenCaptureService.startIntent(
+                    context, result.resultCode, result.data!!, title.ifBlank { null },
+                )
+            else
+                CaptureService.startIntent(
+                    context, result.resultCode, result.data!!, title.ifBlank { null },
+                )
             ContextCompat.startForegroundService(context, startIntent)
         } else {
             permissionStatus = "Recording cancelled at the consent prompt."
@@ -266,6 +277,47 @@ fun RecordScreen(
                 enabled = idleish,
             )
         }
+        // v0.12.0 Tier 2: screen+mic → MP4 instead of audio-only OGG.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Record screen + mic (MP4)",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(
+                checked = screenMode,
+                onCheckedChange = {
+                    screenMode = it
+                    prefs.screenMode = it
+                },
+                enabled = idleish,
+            )
+        }
+        // Iteration-plan template: only applies to video uploads (.mp4),
+        // which a screen recording always is. Visible in both modes.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Iteration plan for screen recordings",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(
+                checked = iterationPlan,
+                onCheckedChange = {
+                    iterationPlan = it
+                    prefs.iterationPlan = it
+                },
+                enabled = idleish,
+            )
+        }
 
         // Hero status block.
         Column(
@@ -359,6 +411,7 @@ fun RecordScreen(
                     Text(
                         if (snapshot.state == CaptureController.State.FINISHED)
                             "Start another recording"
+                        else if (screenMode) "Start screen recording"
                         else "Start recording"
                     )
                 }
@@ -374,9 +427,17 @@ fun RecordScreen(
                 ) {
                     OutlinedButton(
                         onClick = {
+                            // Route pause to whichever service owns the
+                            // session (audio capture vs screen capture).
+                            val svc = if (snapshot.isScreenCapture)
+                                com.vezir.android.capture.ScreenCaptureService::class.java
+                            else CaptureService::class.java
                             context.startService(
-                                Intent(context, CaptureService::class.java).apply {
-                                    action = CaptureService.ACTION_TOGGLE_PAUSE
+                                Intent(context, svc).apply {
+                                    action = if (snapshot.isScreenCapture)
+                                        com.vezir.android.capture.ScreenCaptureService
+                                            .ACTION_TOGGLE_PAUSE
+                                    else CaptureService.ACTION_TOGGLE_PAUSE
                                 },
                             )
                         },
@@ -384,7 +445,13 @@ fun RecordScreen(
                     ) { Text(if (paused) "Resume" else "Pause") }
 
                     Button(
-                        onClick = { context.startService(CaptureService.stopIntent(context)) },
+                        onClick = {
+                            val stopIntent = if (snapshot.isScreenCapture)
+                                com.vezir.android.capture.ScreenCaptureService
+                                    .stopIntent(context)
+                            else CaptureService.stopIntent(context)
+                            context.startService(stopIntent)
+                        },
                         modifier = Modifier.weight(1f).height(56.dp),
                     ) { Text("Stop") }
                 }
@@ -423,7 +490,8 @@ fun RecordScreen(
                     onClick = {
                         if (finishedUri != null) {
                             val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "audio/ogg"
+                                type = if (finishedName.endsWith(".mp4", ignoreCase = true))
+                                    "video/mp4" else "audio/ogg"
                                 putExtra(Intent.EXTRA_STREAM, finishedUri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }

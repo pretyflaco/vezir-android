@@ -44,6 +44,23 @@ class Uploader(
         private const val TAG = "VezirUploader"
         private val OGG = "audio/ogg".toMediaType()
         private val json = Json { ignoreUnknownKeys = true }
+
+        /**
+         * Multipart Content-Type for an upload filename (v0.12.0: video
+         * uploads ride the same `/upload` endpoint; the server picks the
+         * on-disk extension from the filename/MIME and validates magic
+         * bytes).  Defaults to audio/ogg, the app's native recording type.
+         */
+        fun mediaTypeForFileName(fileName: String): okhttp3.MediaType {
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            return when (ext) {
+                "mp4" -> "video/mp4".toMediaType()
+                "mov" -> "video/quicktime".toMediaType()
+                "wav" -> "audio/wav".toMediaType()
+                "mp3" -> "audio/mpeg".toMediaType()
+                else -> OGG
+            }
+        }
     }
 
     @Serializable
@@ -107,6 +124,7 @@ class Uploader(
         fileName: String,
         title: String?,
         summaryPreset: String? = null,
+        summaryTemplate: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
@@ -121,7 +139,7 @@ class Uploader(
         for (attempt in 1..maxAttempts) {
             try {
                 val body = buildBody(
-                    contentUri, fileName, title, summaryPreset,
+                    contentUri, fileName, title, summaryPreset, summaryTemplate,
                     autoLabel, sync, personal, totalBytes, progress,
                 )
                 val request = HttpClients.authHeaders(
@@ -186,6 +204,7 @@ class Uploader(
         parts: List<Part>,
         title: String?,
         summaryPreset: String? = null,
+        summaryTemplate: String? = null,
         autoLabel: Boolean = true,
         sync: Boolean = true,
         personal: Boolean = false,
@@ -202,7 +221,7 @@ class Uploader(
         for (attempt in 1..maxAttempts) {
             try {
                 val body = buildMultiBody(
-                    parts, sizes, title, summaryPreset,
+                    parts, sizes, title, summaryPreset, summaryTemplate,
                     autoLabel, sync, personal, totalBytes, progress,
                 )
                 val request = HttpClients.authHeaders(
@@ -257,6 +276,7 @@ class Uploader(
         sizes: List<Long>,
         title: String?,
         summaryPreset: String?,
+        summaryTemplate: String?,
         autoLabel: Boolean,
         sync: Boolean,
         personal: Boolean,
@@ -270,7 +290,8 @@ class Uploader(
             val partTotal = sizes[i]
             val base = sentBefore
             val partBody = ContentUriRequestBody(
-                contentResolver, part.uri, partTotal, OGG,
+                contentResolver, part.uri, partTotal,
+                mediaTypeForFileName(part.fileName),
             ) { sent, _ -> progress.onProgress(base + sent, totalBytes) }
             builder.addFormDataPart("audio", part.fileName, partBody)
             if (partTotal > 0) sentBefore += partTotal
@@ -280,6 +301,9 @@ class Uploader(
         if (!title.isNullOrBlank()) builder.addFormDataPart("title", title)
         if (!summaryPreset.isNullOrBlank()) {
             builder.addFormDataPart("summary_preset", summaryPreset)
+        }
+        if (!summaryTemplate.isNullOrBlank()) {
+            builder.addFormDataPart("summary_template", summaryTemplate)
         }
         builder.addFormDataPart("auto_label", if (autoLabel) "true" else "false")
         builder.addFormDataPart("sync", if (sync) "true" else "false")
@@ -292,13 +316,17 @@ class Uploader(
         fileName: String,
         title: String?,
         summaryPreset: String?,
+        summaryTemplate: String?,
         autoLabel: Boolean,
         sync: Boolean,
         personal: Boolean,
         totalBytes: Long,
         progress: Progress,
     ): RequestBody {
-        val fileBody = ContentUriRequestBody(contentResolver, contentUri, totalBytes, OGG, progress)
+        val fileBody = ContentUriRequestBody(
+            contentResolver, contentUri, totalBytes,
+            mediaTypeForFileName(fileName), progress,
+        )
         val builder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("audio", fileName, fileBody)
@@ -309,6 +337,11 @@ class Uploader(
             // Server form-field name is `summary_preset` (matches the
             // FastAPI Form parameter in vezir/server/uploads.py).
             builder.addFormDataPart("summary_preset", summaryPreset)
+        }
+        if (!summaryTemplate.isNullOrBlank()) {
+            // `summary_template` (vezir >= 0.18.0): millet summary template,
+            // e.g. "iteration-plan" for screen recordings.
+            builder.addFormDataPart("summary_template", summaryTemplate)
         }
         // Always send the privacy toggles as string-encoded bools so the
         // server's _parse_bool_form() reads them consistently across

@@ -45,6 +45,9 @@ object CaptureController {
         val playbackRmsDbfs: Float = -90f,
         val micRmsDbfs: Float = -90f,
         val playbackSilent: Boolean = false,  // hint when only mic is audible
+        /** True while [ScreenCaptureService] (screen+mic → MP4) owns the
+         * session; the UI routes pause/stop to the right service. */
+        val isScreenCapture: Boolean = false,
         /** Content URI of the OGG (MediaStore content:// or file:// fallback). */
         val outputUri: Uri? = null,
         /** Filename only, e.g. "vezir-20260430-010839.ogg". */

@@ -124,6 +124,32 @@ class Prefs(context: Context) : TeamCredentialBacking {
         }
 
     /**
+     * Record screen + mic to MP4 instead of mic+playback to OGG (v0.12.0,
+     * Tier 2 screen capture).  Sticky across launches; default false
+     * (classic audio meeting recording).
+     */
+    var screenMode: Boolean
+        get() = prefs.getBoolean(KEY_SCREEN_MODE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SCREEN_MODE, value).apply()
+        }
+
+    /**
+     * When true, video uploads (.mp4/.mov) request millet's
+     * "iteration-plan" summary template (server >= 0.18.0 +
+     * millet-pipeline >= 0.17.0): timestamped issues/severity/suggested
+     * fixes keyed to cue frames, saved as <base>.iteration-plan.md.
+     * Audio uploads are unaffected (a plan makes no sense for a meeting).
+     * Sticky; default ON — the template is the point of recording a
+     * narrated demo.
+     */
+    var iterationPlan: Boolean
+        get() = prefs.getBoolean(KEY_ITERATION_PLAN, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_ITERATION_PLAN, value).apply()
+        }
+
+    /**
      * PEM-encoded CA certificate from a v2 enrollment QR payload.
      *
      * When present, OkHttp trusts this CA alongside the system CAs so
@@ -290,6 +316,8 @@ class Prefs(context: Context) : TeamCredentialBacking {
         private const val KEY_CA_PEM = "vezir_ca_pem"
         private const val KEY_PERSONAL = "vezir_personal"
         private const val KEY_AUTO_DELETE = "vezir_auto_delete"
+        private const val KEY_SCREEN_MODE = "vezir_screen_mode"
+        private const val KEY_ITERATION_PLAN = "vezir_iteration_plan"
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
@@ -317,5 +345,16 @@ class Prefs(context: Context) : TeamCredentialBacking {
 
         fun presetLabelFor(id: String): String =
             PRESET_OPTIONS.firstOrNull { it.first == id }?.second ?: id
+
+        /**
+         * Summary template for an upload filename, or null for the default
+         * meeting summary.  Only video files get the iteration plan (a plan
+         * makes no sense for an audio meeting).
+         */
+        fun summaryTemplateFor(fileName: String, iterationPlanEnabled: Boolean): String? {
+            if (!iterationPlanEnabled) return null
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            return if (ext == "mp4" || ext == "mov") "iteration-plan" else null
+        }
     }
 }

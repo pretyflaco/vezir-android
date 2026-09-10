@@ -42,6 +42,11 @@ fun UploadScreen(
     val snapshot by UploadController.state.collectAsState()
 
     val cred = remember { prefs.activeCredential() }
+    // v0.12.0: video uploads get millet's iteration-plan template when the
+    // user has the toggle on (Prefs.iterationPlan, default ON).
+    val summaryTemplate = remember(fileName) {
+        Prefs.summaryTemplateFor(fileName, prefs.iterationPlan)
+    }
 
     // v0.4.4: probe /health to find a reachable URL before uploading.
     // The Uploader has its own retry logic + streaming, so we can't wrap
@@ -82,6 +87,7 @@ fun UploadScreen(
                 autoLabel = autoLabel,
                 sync = sync,
                 personal = personal,
+                summaryTemplate = summaryTemplate,
             )
         }
     }
@@ -137,6 +143,14 @@ fun UploadScreen(
         if (!summaryPreset.isNullOrBlank()) {
             Text(
                 "preset $summaryPreset",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (summaryTemplate != null) {
+            Text(
+                "template $summaryTemplate",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

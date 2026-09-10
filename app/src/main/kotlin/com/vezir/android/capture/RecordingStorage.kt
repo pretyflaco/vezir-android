@@ -56,7 +56,8 @@ class CountingOutputStream(out: OutputStream) : FilterOutputStream(out) {
 object RecordingStorage {
 
     private const val TAG = "VezirRecordingStorage"
-    private const val MIME = "audio/ogg"
+    const val MIME_OGG = "audio/ogg"
+    const val MIME_MP4 = "video/mp4"
     private const val DIR = "Vezir"
 
     data class RecordingTarget(
@@ -68,6 +69,8 @@ object RecordingStorage {
         val displayPath: String,
         /** Filename only. */
         val displayName: String,
+        /** MIME the target was created with (audio/ogg or video/mp4). */
+        val mimeType: String,
         /**
          * MediaStore insertion is "pending" until we mark it complete; the
          * fallback path is null. Capture code MUST call [finalize] on
@@ -84,7 +87,7 @@ object RecordingStorage {
             val pv = pendingValues ?: return
             try {
                 val cv = ContentValues().apply {
-                    put(MediaStore.Audio.Media.IS_PENDING, 0)
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
                 }
                 context.contentResolver.update(uri, cv, null, null)
             } catch (e: Exception) {
@@ -105,32 +108,72 @@ object RecordingStorage {
                 }
             }
         }
+
+        /**
+         * Open a write FileDescriptor for the target (video path).
+         *
+         * MediaMuxer writes at the FD level, not through [output] — screen
+         * capture creates the target (so MediaStore/fallback handling stays
+         * here), closes [output] unused, and hands this FD to the muxer.
+         * Caller closes the returned [android.os.ParcelFileDescriptor].
+         */
+        fun openWriteFd(context: Context): android.os.ParcelFileDescriptor {
+            if (uri.scheme == "file") {
+                return android.os.ParcelFileDescriptor.open(
+                    File(uri.path!!),
+                    android.os.ParcelFileDescriptor.MODE_WRITE_ONLY or
+                        android.os.ParcelFileDescriptor.MODE_TRUNCATE,
+                )
+            }
+            return context.contentResolver.openFileDescriptor(uri, "w")
+                ?: error("openFileDescriptor returned null for $uri")
+        }
     }
 
     /** Marker that a target was inserted with IS_PENDING=1 and needs finalize(). */
     class PendingMediaStoreValues internal constructor()
 
-    fun create(context: Context, displayName: String): RecordingTarget {
+    /**
+     * Create a recording target.
+     *
+     * [mimeType] selects the MediaStore collection + directory: audio
+     * (default) lands in `Music/Vezir/` via [MediaStore.Audio.Media];
+     * `video/…` lands in `Movies/Vezir/` via [MediaStore.Video.Media].
+     */
+    fun create(
+        context: Context,
+        displayName: String,
+        mimeType: String = MIME_OGG,
+    ): RecordingTarget {
         // Try MediaStore first.
         try {
-            val target = createViaMediaStore(context, displayName)
+            val target = createViaMediaStore(context, displayName, mimeType)
             if (target != null) return target
         } catch (e: Exception) {
             Log.w(TAG, "MediaStore path unusable, falling back to app-private dir", e)
         }
-        return createInAppFiles(context, displayName)
+        return createInAppFiles(context, displayName, mimeType)
     }
 
-    private fun createViaMediaStore(context: Context, displayName: String): RecordingTarget? {
+    private fun createViaMediaStore(
+        context: Context,
+        displayName: String,
+        mimeType: String,
+    ): RecordingTarget? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val isVideo = mimeType.startsWith("video/")
+        val baseDir = if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_MUSIC
+        val collection = if (isVideo)
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        else
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val resolver = context.contentResolver
-        val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-            put(MediaStore.Audio.Media.MIME_TYPE, MIME)
-            put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/$DIR")
-            put(MediaStore.Audio.Media.IS_PENDING, 1)
-            put(MediaStore.Audio.Media.IS_MUSIC, 0)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "$baseDir/$DIR")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+            if (!isVideo) put(MediaStore.Audio.Media.IS_MUSIC, 0)
         }
         val uri = resolver.insert(collection, values)
             ?: error("MediaStore.insert returned null for $displayName")
@@ -142,13 +185,18 @@ object RecordingStorage {
         return RecordingTarget(
             output = CountingOutputStream(out),
             uri = uri,
-            displayPath = "${Environment.DIRECTORY_MUSIC}/$DIR/$displayName",
+            displayPath = "$baseDir/$DIR/$displayName",
             displayName = displayName,
+            mimeType = mimeType,
             pendingValues = PendingMediaStoreValues(),
         )
     }
 
-    private fun createInAppFiles(context: Context, displayName: String): RecordingTarget {
+    private fun createInAppFiles(
+        context: Context,
+        displayName: String,
+        mimeType: String,
+    ): RecordingTarget {
         val dir = File(context.getExternalFilesDir(null), "recordings").apply { mkdirs() }
         val file = File(dir, displayName)
         return RecordingTarget(
@@ -156,6 +204,7 @@ object RecordingStorage {
             uri = Uri.fromFile(file),
             displayPath = "Android/data/${context.packageName}/files/recordings/$displayName",
             displayName = displayName,
+            mimeType = mimeType,
             pendingValues = null,
         )
     }
