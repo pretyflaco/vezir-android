@@ -61,11 +61,21 @@ fun UploadScreen(
             var token = c.token
             if (com.vezir.android.auth.SessionExpiry.isExpired(token)) {
                 // Rotating sessions (server >= 0.10.0): try a silent refresh
-                // before giving up.  Falls through to the expired message
-                // only when there's no refresh token or the server rejects.
+                // before giving up.  Distinguish a DEFINITIVE auth rejection
+                // (refresh token revoked/expired — AuthState is marked) from
+                // a transient network failure (e.g. an expired server cert,
+                // 2026-09-10 incident): the latter must not masquerade as
+                // "session expired" and push the user through a pointless
+                // re-login.
                 val refreshed = com.vezir.android.auth.TokenRefresher.refresh(token)
                 if (refreshed.isNullOrEmpty()) {
-                    UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                    if (com.vezir.android.auth.AuthState.sessionExpired.value) {
+                        UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                    } else {
+                        UploadController.setError(
+                            "Server unreachable — check your connection and try again",
+                        )
+                    }
                     return@LaunchedEffect
                 }
                 token = refreshed
@@ -322,9 +332,17 @@ fun UploadMultiScreen(
         }
         var token = c.token
         if (com.vezir.android.auth.SessionExpiry.isExpired(token)) {
+            // Same network-vs-auth distinction as the single-upload path:
+            // only a definitive refresh rejection means "sign in again".
             val refreshed = com.vezir.android.auth.TokenRefresher.refresh(token)
             if (refreshed.isNullOrEmpty()) {
-                UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                if (com.vezir.android.auth.AuthState.sessionExpired.value) {
+                    UploadController.setError(UploadController.SESSION_EXPIRED_MESSAGE)
+                } else {
+                    UploadController.setError(
+                        "Server unreachable — check your connection and try again",
+                    )
+                }
                 return@LaunchedEffect
             }
             token = refreshed

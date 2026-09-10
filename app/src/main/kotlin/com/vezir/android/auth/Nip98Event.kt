@@ -7,7 +7,7 @@ import java.security.MessageDigest
 /**
  * Builds the unsigned NIP-98 (kind 27235) HTTP-auth event that the vezir
  * server verifies at `POST /api/auth/nostr/login`, and computes its event
- * id locally so Amber only has to Schnorr-sign.
+ * id locally so the signer only has to Schnorr-sign.
  *
  * The server (vezir `nip98.py`) recomputes the id as
  * `sha256(canonical_json)` where canonical_json is
@@ -20,7 +20,7 @@ import java.security.MessageDigest
  * `["method", "POST"]` tag, plus a fresh `created_at` (server window is
  * 120 s, ±60 s future tolerance).
  *
- * Amber (NIP-55) does the actual signing; this class never touches a
+ * The NIP-55 signer app does the actual signing; this class never touches a
  * private key.
  */
 object Nip98Event {
@@ -28,7 +28,7 @@ object Nip98Event {
     const val KIND = 27235
 
     /**
-     * An unsigned event ready to hand to Amber.  [id] is precomputed; Amber
+     * An unsigned event ready to hand to the signer.  [id] is precomputed; the signer
      * fills in `sig` (and may echo the whole event back).  [toJson] yields
      * the JSON string appended to the `nostrsigner:` URI.
      */
@@ -43,7 +43,7 @@ object Nip98Event {
         /** Full event JSON (with empty sig) for the `nostrsigner:` URI. */
         fun toJson(sig: String = ""): String {
             val obj = JSONObject()
-            // Field order here is cosmetic for Amber's parse; the id was
+            // Field order here is cosmetic for the signer's parse; the id was
             // computed from the canonical array form below.
             obj.put("id", id)
             obj.put("pubkey", pubkey)

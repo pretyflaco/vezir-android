@@ -30,9 +30,10 @@
         android:required="false" />
 
     <!-- Package visibility (Android 11+/targetSdk 35): so we can detect and
-         launch a NIP-55 signer (Amber) via the `nostrsigner:` scheme, and
-         open the Google device-code page in a browser.  Without these the
-         OS hides those activities from queryIntentActivities/resolve. -->
+         launch a NIP-55 signer (Amber, Blink, …) via the `nostrsigner:`
+         scheme, and open the Google device-code page in a browser.
+         Without these the OS hides those activities from
+         queryIntentActivities/resolve. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />

@@ -25,7 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.vezir.android.auth.AmberSigner
+import com.vezir.android.auth.Nip55Signer
 import com.vezir.android.auth.GoogleLoginApi
 import com.vezir.android.auth.Nip98Event
 import com.vezir.android.auth.NostrLoginApi
@@ -35,8 +35,8 @@ import kotlinx.coroutines.launch
  * Sign-in screen (vezir 0.6.0).  Three paths, all converging on a bearer
  * token the caller persists via [onLoggedIn]:
  *
- *   1. **Amber (Nostr signer)** — NIP-55 foreground intents: get the
- *      pubkey, build a NIP-98 event, have Amber sign it, POST it to
+ *   1. **Nostr signer** — NIP-55 foreground intents: get the
+ *      pubkey, build a NIP-98 event, have the signer sign it, POST it to
  *      `/api/auth/nostr/login` for a session JWT.
  *   2. **Google (@blinkbtc.com)** — OAuth device-code via vezir: show the
  *      user a code + open the verification URL, poll for the JWT.
@@ -115,13 +115,13 @@ fun LoginScreen(
             busy = false
             return@rememberLauncherForActivityResult
         }
-        when (val s = AmberSigner.parseSign(result.data, unsigned)) {
-            is AmberSigner.SignResult.Success -> postSignedEvent(s.signedEventJson)
-            AmberSigner.SignResult.Rejected -> {
-                status = "Signing was rejected in Amber."
+        when (val s = Nip55Signer.parseSign(result.data, unsigned)) {
+            is Nip55Signer.SignResult.Success -> postSignedEvent(s.signedEventJson)
+            Nip55Signer.SignResult.Rejected -> {
+                status = "Signing was rejected in your Nostr signer."
                 busy = false
             }
-            is AmberSigner.SignResult.Failed -> {
+            is Nip55Signer.SignResult.Failed -> {
                 status = "Signer error: ${s.reason}"
                 busy = false
             }
@@ -133,47 +133,48 @@ fun LoginScreen(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            status = "Amber sign-in was cancelled."
+            status = "Nostr sign-in was cancelled."
             busy = false
             return@rememberLauncherForActivityResult
         }
-        when (val login = AmberSigner.parseLogin(result.data)) {
-            is AmberSigner.LoginResult.Success -> {
+        when (val login = Nip55Signer.parseLogin(result.data)) {
+            is Nip55Signer.LoginResult.Success -> {
                 signerPackage = login.signerPackage
                 val unsigned = Nip98Event.buildLogin(
                     pubkeyHex = login.pubkeyHex,
                     loginUrl = NostrLoginApi.loginUrl(url),
                 )
                 pendingUnsigned = unsigned
-                status = "Approve the signature in Amber…"
+                status = "Approve the signature in your Nostr signer…"
                 signLauncher.launch(
-                    AmberSigner.signIntent(unsigned, login.pubkeyHex, login.signerPackage),
+                    Nip55Signer.signIntent(unsigned, login.pubkeyHex, login.signerPackage),
                 )
             }
-            AmberSigner.LoginResult.Rejected -> {
-                status = "Amber sign-in was rejected."
+            Nip55Signer.LoginResult.Rejected -> {
+                status = "Nostr sign-in was rejected."
                 busy = false
             }
-            is AmberSigner.LoginResult.Failed -> {
-                status = "Amber error: ${login.reason}"
+            is Nip55Signer.LoginResult.Failed -> {
+                status = "Signer error: ${login.reason}"
                 busy = false
             }
         }
     }
 
-    fun startAmber() {
+    fun startNostrSignIn() {
         if (url.isBlank()) { status = "Enter the server URL first."; return }
-        if (!AmberSigner.isSignerInstalled(context)) {
-            status = "No Nostr signer found. Install Amber, then try again."
+        if (!Nip55Signer.isSignerInstalled(context)) {
+            status = "No Nostr signer found. Install a signer app (e.g. Amber), then try again."
             return
         }
         busy = true
         status = "Choose your Nostr signer…"
         // No forced package: let Android show the system chooser among all
-        // installed NIP-55 signers (Amber, etc.).  The signer the user picks
-        // is captured from the login result's `package` extra and reused for
-        // the sign_event leg, so the whole flow stays with their choice.
-        loginLauncher.launch(AmberSigner.loginIntent(signerPackage = null))
+        // installed NIP-55 signers (Amber, Blink, …).  The signer the user
+        // picks is captured from the login result's `package` extra and
+        // reused for the sign_event leg, so the whole flow stays with
+        // their choice.
+        loginLauncher.launch(Nip55Signer.loginIntent(signerPackage = null))
     }
 
     fun startGoogle() {
@@ -244,8 +245,9 @@ fun LoginScreen(
         BrandHeader(subtitle = "sign in")
 
         Text(
-            "Sign in to your Vezir server. Use Amber if you have a Nostr key, " +
-                "or your @blinkbtc.com Google account.",
+            "Sign in to your Vezir server. Use a Nostr signer app (Amber, " +
+                "Blink…) if you have a Nostr key, or your @blinkbtc.com " +
+                "Google account.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -260,10 +262,10 @@ fun LoginScreen(
         )
 
         Button(
-            onClick = { startAmber() },
+            onClick = { startNostrSignIn() },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp),
-        ) { Text("Sign in with Amber") }
+        ) { Text("Sign in with Nostr") }
 
         Button(
             onClick = { startGoogle() },

@@ -26,10 +26,11 @@ Alpha (**0.9.0**). Sideload only; no Play Store. Full history in
 On first launch, point the app at your server (e.g.
 `https://vezir.twentyone.ist`) and pick one:
 
-- **Sign in with Nostr** — uses a local NIP-55 signer
-  ([Amber](https://github.com/greenart7c3/Amber/releases)) holding your
-  key. The app shows the system signer chooser; approve `get_public_key`
-  then the login signature in Amber. Your key never touches the app.
+- **Sign in with Nostr** — uses any local NIP-55 signer app
+  ([Amber](https://github.com/greenart7c3/Amber/releases), Blink, …)
+  holding your key. The app shows the system signer chooser; approve
+  `get_public_key` then the login signature in your signer. Your key
+  never touches the app.
 - **Sign in with Google** — OAuth device flow for a `@workspace-domain`
   account: the app shows a code and opens Google in a browser (usually
   pre-filled — just tap Continue). The code is also copied to your
@@ -48,7 +49,7 @@ dropdown.
 
 | Action | How |
 |---|---|
-| Sign in | Nostr (Amber) or Google, per above. |
+| Sign in | Nostr (any NIP-55 signer) or Google, per above. |
 | Record meeting | **Start recording** → Android `MediaProjection` consent → captures system playback + mic, mixes with soft-clip, encodes Opus. 3h hard cap. |
 | Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg`. |
 | Summarization preset | Dropdown: **High Quality** (Sonnet), **Confidential** (TEE; default on Android), **Alternative**. Sent as `summary_preset`. |
@@ -64,9 +65,9 @@ dropdown.
   endpoints). 0.8.3+ recommended (Google device-flow DNS resilience).
 - Your identity authorized on the server (`npub` or `@domain` email) and a
   team membership — ask your operator.
-- For Nostr sign-in: a NIP-55 signer
-  ([Amber](https://github.com/greenart7c3/Amber/releases)) on the phone
-  holding your key.
+- For Nostr sign-in: a NIP-55 signer app
+  ([Amber](https://github.com/greenart7c3/Amber/releases), Blink, …) on
+  the phone holding your key.
 - **No VPN.** The server is reached over ordinary HTTPS.
 
 ## Install
@@ -119,8 +120,9 @@ the in-app update check picks up new releases automatically.
 
 - Server URL + session JWT stored in `EncryptedSharedPreferences`
   (AES-256-GCM via Android Keystore); excluded from cloud backup.
-- The session is short-lived (~24h); your Nostr key stays in Amber and
-  never touches the app. Google's client secret stays on the server.
+- The session is short-lived (~24h); your Nostr key stays in your
+  signer app and never touches the app. Google's client secret stays on
+  the server.
 - HTTPS only against the public server cert; an optional internal CA
   (legacy enrollment) is trusted *in addition to* the public store.
 - Recordings are stored unencrypted in `Music/Vezir/` — treat the phone's
@@ -129,7 +131,7 @@ the in-app update check picks up new releases automatically.
 ## How it talks to the server
 
 100% Jetpack Compose + OkHttp (no Retrofit). NIP-55 sign-in uses
-`nostrsigner:` Android intents (`auth/AmberSigner.kt`), builds a NIP-98
+`nostrsigner:` Android intents (`auth/Nip55Signer.kt`), builds a NIP-98
 event whose id is computed byte-identically to the server
 (`auth/Nip98Event.kt`), and posts it to `/api/auth/nostr/login`. Google uses
 the device grant via the server (`auth/GoogleLoginApi.kt`). All sign-in

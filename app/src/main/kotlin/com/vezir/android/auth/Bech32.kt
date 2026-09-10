@@ -2,7 +2,7 @@ package com.vezir.android.auth
 
 /**
  * Minimal bech32 decoder, just enough to convert a NIP-19 `npub1…` to the
- * 64-char hex public key the vezir server expects.  Amber usually returns
+ * 64-char hex public key the vezir server expects.  Signers usually return
  * hex already, but some signers return the npub form, so we handle both.
  *
  * Implements BIP-173 bech32 (not bech32m) decode + the 5-bit→8-bit

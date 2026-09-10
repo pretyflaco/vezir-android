@@ -7,7 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Minimal NIP-55 (Android signer) client for the Amber app.
+ * Minimal NIP-55 (Android signer) client — works with any installed
+ * Nostr signer app (Amber, Blink, …).
  *
  * Unlike the desktop CLI (which uses NIP-46 over relays), Android talks to
  * the local signer via `nostrsigner:` intents — no relays, no clock-skew.
@@ -15,13 +16,14 @@ import org.json.JSONObject
  *
  *   1. `get_public_key` (login) → the user's hex pubkey, and which signer
  *      package answered.
- *   2. `sign_event` → Amber Schnorr-signs our unsigned NIP-98 event.
+ *   2. `sign_event` → the signer Schnorr-signs our unsigned NIP-98 event.
  *
  * This object only *builds* the intents and *parses* the result intents
  * (pure, unit-testable).  The Compose layer owns the
  * `rememberLauncherForActivityResult(StartActivityForResult)` plumbing.
  *
- * Wire contract (matches Amber / Amethyst quartz `nip55AndroidSigner`):
+ * Wire contract (matches Amber / Amethyst quartz `nip55AndroidSigner` —
+ * the de-facto NIP-55 convention any compatible signer implements):
  *   - login intent:  ACTION_VIEW, data `nostrsigner:`, extras
  *                    `type=get_public_key`, `permissions=<json>`.
  *   - sign intent:   ACTION_VIEW, data `nostrsigner:<unsigned-event-json>`,
@@ -31,11 +33,11 @@ import org.json.JSONObject
  *                    `event` (full signed event JSON on sign),
  *                    `package` (signer pkg, login), `rejected` (bool).
  */
-object AmberSigner {
+object Nip55Signer {
 
     private const val SCHEME = "nostrsigner:"
 
-    /** True if any NIP-55 signer (Amber) can handle `nostrsigner:`. */
+    /** True if any NIP-55 signer can handle `nostrsigner:`. */
     fun isSignerInstalled(context: Context): Boolean =
         context.packageManager.queryIntentActivities(probeIntent(), 0).isNotEmpty()
 
@@ -103,7 +105,7 @@ object AmberSigner {
         if (pubkey.isNullOrEmpty()) {
             return LoginResult.Failed("signer returned no public key")
         }
-        // Amber returns hex (64) or sometimes npub-bech32; vezir needs hex.
+        // Signers return hex (64) or sometimes npub-bech32; vezir needs hex.
         val hex = if (pubkey.startsWith("npub1")) {
             Bech32.npubToHex(pubkey) ?: return LoginResult.Failed("bad npub")
         } else {
@@ -117,7 +119,7 @@ object AmberSigner {
 
     /**
      * Intent asking the signer to sign [unsigned].  [loggedInUser] is the
-     * hex pubkey (Amber's `current_user`); [signerPackage] targets the
+     * hex pubkey (the signer's `current_user`); [signerPackage] targets the
      * signer that answered login.
      */
     fun signIntent(

@@ -6,6 +6,30 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.13.0 — generic Nostr signer sign-in + truthful refresh errors
+
+### Changed
+
+- **"Sign in with Amber" is now "Sign in with Nostr."**  The flow was
+  always generic NIP-55 (intent-based; the signer "modal" is the Android
+  system chooser over every installed `nostrsigner:` app) — only the
+  wording was Amber-specific.  All user-visible strings, the
+  `AmberSigner` object (now `Nip55Signer`), tests, and docs now speak of
+  "a Nostr signer (Amber, Blink, …)".  Any app that implements the
+  NIP-55 intent contract shows up in the chooser with no vezir update.
+
+### Fixed
+
+- **A dead server no longer masquerades as an expired session.**  When
+  the pre-upload token refresh fails, the app now distinguishes a
+  definitive auth rejection (refresh token revoked — "Session expired,
+  sign in again") from a network/TLS failure ("Server unreachable —
+  check your connection").  Before, an expired server certificate
+  (2026-09-10 incident) was reported as "Session expired — please sign
+  in again", sending the user through a pointless re-login that then
+  also failed with a confusing "Chain validation failed".
+
+
 ## 0.12.3 — fix: app crashed when stopping a screen recording
 
 ### Fixed

@@ -314,7 +314,7 @@ private fun AppRoot() {
                 onConfigured = {
                     // After token/QR enrollment, discover team memberships
                     // via /api/me using the shared SessionDiscovery helper
-                    // (same path the Amber/Google sign-in flows use).
+                    // (same path the Nostr/Google sign-in flows use).
                     scope.launch {
                         val url = prefs.serverUrl
                         val token = prefs.token
