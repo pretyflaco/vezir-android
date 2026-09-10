@@ -367,6 +367,7 @@ class ScreenCaptureService : Service() {
 
         // ── video drain thread ──
         val videoInfo = MediaCodec.BufferInfo()
+        val videoPtsBaseUs = java.util.concurrent.atomic.AtomicLong(-1L)
         val videoDrain = thread(name = "vezir-screen-video", isDaemon = true) {
             var eos = false
             while (!eos) {
@@ -386,11 +387,26 @@ class ScreenCaptureService : Service() {
                             (videoInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
                         if (buf != null && videoInfo.size > 0 && !isConfig) {
                             if (!pauseRequested) {
-                                videoInfo.presentationTimeUs -= currentPausedTotalUs()
+                                // v0.12.2: rebase the video timeline to the
+                                // first frame.  Surface timestamps are
+                                // boot-clock based (e.g. 270487 s), which
+                                // made absolute ffmpeg -ss seeks land before
+                                // the first frame — the server could not
+                                // extract cue frames from 0.12.0/0.12.1
+                                // recordings.  Audio PTS (sample counter)
+                                // already starts at 0, so A/V stays aligned.
+                                if (videoPtsBaseUs.get() < 0) {
+                                    videoPtsBaseUs.set(videoInfo.presentationTimeUs)
+                                }
+                                videoInfo.presentationTimeUs = rebasedVideoPts(
+                                    videoInfo.presentationTimeUs,
+                                    videoPtsBaseUs.get(),
+                                    currentPausedTotalUs(),
+                                )
                                 muxerState.writeVideo(buf, videoInfo)
                             }
                             // Paused: drain but drop — the resumed timeline
-                            // continues at (raw PTS - paused total).
+                            // continues at (raw PTS - base - paused total).
                         }
                         videoEncoder.releaseOutputBuffer(outIdx, false)
                         if (isEos) eos = true
@@ -748,3 +764,13 @@ internal fun scaledVideoSize(srcW: Int, srcH: Int): Pair<Int, Int> {
     fun align16(v: Int) = (v / 16).coerceAtLeast(1) * 16
     return align16((srcW * scale).toInt()) to align16((srcH * scale).toInt())
 }
+
+/**
+ * Rebase a video frame's presentation time so the first recorded frame
+ * lands at ~0 (v0.12.2).  [rawPtsUs] is the boot-clock surface timestamp,
+ * [basePtsUs] the first frame's raw PTS, [pausedTotalUs] the cumulative
+ * time spent paused.  Clamped at 0 so a stray early frame can never go
+ * negative (MediaMuxer rejects non-monotonic/negative PTS).
+ */
+internal fun rebasedVideoPts(rawPtsUs: Long, basePtsUs: Long, pausedTotalUs: Long): Long =
+    (rawPtsUs - basePtsUs - pausedTotalUs).coerceAtLeast(0L)

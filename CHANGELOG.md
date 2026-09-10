@@ -6,6 +6,22 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.12.2 — fix: rebased video timestamps (server frame extraction)
+
+### Fixed
+
+- **Screen-recorded MP4s had a boot-clock video timeline**
+  (`start_time` ≈ system uptime, e.g. 75 h): the muxer wrote raw surface
+  timestamps without rebasing the first frame to 0.  Players tolerate it,
+  but the vezir server's cue-frame extraction seeks with absolute
+  `ffmpeg -ss HH:MM:SS`, which landed before the first frame — sessions
+  got transcript + iteration plan but **zero cue frames**.  The video
+  drain now rebases every frame's PTS to the first recorded frame (minus
+  paused time, clamped at 0), so the video track starts at ~0 like the
+  audio track.  (vezir-server 0.19.1 additionally seeks offset-tolerant,
+  rescuing recordings made with 0.12.0/0.12.1.)
+
+
 ## 0.12.1 — fix: screen recording crashed on Android 14+
 
 ### Fixed
