@@ -21,7 +21,9 @@ import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
@@ -195,6 +197,19 @@ class ScreenCaptureService : Service() {
             return
         }
 
+        // API 34+: createVirtualDisplay() throws IllegalStateException
+        // ("Must register a callback before starting capture…") unless a
+        // MediaProjection.Callback is registered first.  onStop fires when
+        // the user revokes screen sharing from the system chip — map it to
+        // a graceful stop so the MP4 finalizes instead of stalling.
+        val projectionCallback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                Log.w(TAG, "MediaProjection stopped by the system; stopping capture")
+                stopRequested = true
+            }
+        }
+        projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+
         CaptureController.update {
             CaptureController.Snapshot(
                 state = CaptureController.State.STARTING,
@@ -214,6 +229,7 @@ class ScreenCaptureService : Service() {
                     )
                 }
             } finally {
+                runCatching { projection.unregisterCallback(projectionCallback) }
                 runCatching { projection.stop() }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()

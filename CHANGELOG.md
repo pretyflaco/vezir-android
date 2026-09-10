@@ -6,6 +6,22 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.12.1 — fix: screen recording crashed on Android 14+
+
+### Fixed
+
+- **"Record screen + mic" failed to start with `state error: Must register
+  a callback before starting capture, to manage resources in response to
+  MediaProjection states.`**  On API 34+, `createVirtualDisplay()` throws
+  `IllegalStateException` unless a `MediaProjection.Callback` is registered
+  first — `ScreenCaptureService` registered none.  It now registers one
+  right after obtaining the projection (and unregisters on teardown).
+  Bonus correctness: `onStop()` — the user revoking screen share from the
+  system chip — now maps to a graceful stop so the MP4 finalizes instead
+  of stalling the pipeline.  Audio recording was never affected (no
+  VirtualDisplay in that path).
+
+
 ## 0.12.0 — screen recordings: share in, pass through, record natively
 
 The screenrecording-driven iteration loop on device (pairs with
