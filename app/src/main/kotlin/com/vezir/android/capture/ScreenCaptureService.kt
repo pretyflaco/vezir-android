@@ -368,49 +368,70 @@ class ScreenCaptureService : Service() {
         // ── video drain thread ──
         val videoInfo = MediaCodec.BufferInfo()
         val videoPtsBaseUs = java.util.concurrent.atomic.AtomicLong(-1L)
+        // 0.12.3: signalEndOfInputStream() must fire EXACTLY once — a
+        // second call throws IllegalStateException, which (raised in this
+        // raw thread) crashed the whole app on Stop.  See EosGuard.
+        val videoEos = EosGuard()
         val videoDrain = thread(name = "vezir-screen-video", isDaemon = true) {
-            var eos = false
-            while (!eos) {
-                val outIdx = videoEncoder.dequeueOutputBuffer(videoInfo, ENCODER_TIMEOUT_US)
-                when {
-                    outIdx == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                        if (stopRequested) videoEncoder.signalEndOfInputStream()
-                    }
-                    outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        muxerState.addVideoTrack(videoEncoder.outputFormat)
-                    }
-                    outIdx >= 0 -> {
-                        val buf = videoEncoder.getOutputBuffer(outIdx)
-                        val isConfig =
-                            (videoInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-                        val isEos =
-                            (videoInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
-                        if (buf != null && videoInfo.size > 0 && !isConfig) {
-                            if (!pauseRequested) {
-                                // v0.12.2: rebase the video timeline to the
-                                // first frame.  Surface timestamps are
-                                // boot-clock based (e.g. 270487 s), which
-                                // made absolute ffmpeg -ss seeks land before
-                                // the first frame — the server could not
-                                // extract cue frames from 0.12.0/0.12.1
-                                // recordings.  Audio PTS (sample counter)
-                                // already starts at 0, so A/V stays aligned.
-                                if (videoPtsBaseUs.get() < 0) {
-                                    videoPtsBaseUs.set(videoInfo.presentationTimeUs)
-                                }
-                                videoInfo.presentationTimeUs = rebasedVideoPts(
-                                    videoInfo.presentationTimeUs,
-                                    videoPtsBaseUs.get(),
-                                    currentPausedTotalUs(),
-                                )
-                                muxerState.writeVideo(buf, videoInfo)
+            try {
+                var eos = false
+                while (!eos) {
+                    val outIdx = videoEncoder.dequeueOutputBuffer(videoInfo, ENCODER_TIMEOUT_US)
+                    when {
+                        outIdx == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                            if (stopRequested) videoEos.signalOnce {
+                                videoEncoder.signalEndOfInputStream()
                             }
-                            // Paused: drain but drop — the resumed timeline
-                            // continues at (raw PTS - base - paused total).
                         }
-                        videoEncoder.releaseOutputBuffer(outIdx, false)
-                        if (isEos) eos = true
+                        outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            muxerState.addVideoTrack(videoEncoder.outputFormat)
+                        }
+                        outIdx >= 0 -> {
+                            val buf = videoEncoder.getOutputBuffer(outIdx)
+                            val isConfig =
+                                (videoInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                            val isEos =
+                                (videoInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                            if (buf != null && videoInfo.size > 0 && !isConfig) {
+                                if (!pauseRequested) {
+                                    // v0.12.2: rebase the video timeline to the
+                                    // first frame.  Surface timestamps are
+                                    // boot-clock based (e.g. 270487 s), which
+                                    // made absolute ffmpeg -ss seeks land before
+                                    // the first frame — the server could not
+                                    // extract cue frames from 0.12.0/0.12.1
+                                    // recordings.  Audio PTS (sample counter)
+                                    // already starts at 0, so A/V stays aligned.
+                                    if (videoPtsBaseUs.get() < 0) {
+                                        videoPtsBaseUs.set(videoInfo.presentationTimeUs)
+                                    }
+                                    videoInfo.presentationTimeUs = rebasedVideoPts(
+                                        videoInfo.presentationTimeUs,
+                                        videoPtsBaseUs.get(),
+                                        currentPausedTotalUs(),
+                                    )
+                                    muxerState.writeVideo(buf, videoInfo)
+                                }
+                                // Paused: drain but drop — the resumed timeline
+                                // continues at (raw PTS - base - paused total).
+                            }
+                            videoEncoder.releaseOutputBuffer(outIdx, false)
+                            if (isEos) eos = true
+                        }
                     }
+                }
+            } catch (t: Throwable) {
+                // An encoder failure here used to escape the thread and
+                // kill the whole process mid-recording.  Degrade to a
+                // graceful stop: the pipeline thread's finally block
+                // finalizes whatever was muxed so far.
+                Log.e(TAG, "video drain failed; stopping capture", t)
+                stopRequested = true
+                CaptureController.update {
+                    it.copy(
+                        state = CaptureController.State.ERROR,
+                        errorMessage = t.message ?: t.javaClass.simpleName,
+                    )
                 }
             }
         }
@@ -569,9 +590,9 @@ class ScreenCaptureService : Service() {
                 }
             }
 
-            // Signal the video surface encoder and let the drain thread
-            // flush the tail before we tear down.
-            runCatching { videoEncoder.signalEndOfInputStream() }
+            // Signal the video surface encoder (once — the drain thread may
+            // already have) and let it flush the tail before we tear down.
+            videoEos.signalOnce { videoEncoder.signalEndOfInputStream() }
             videoDrain.join(10_000)
         } finally {
             CaptureController.update { it.copy(state = CaptureController.State.STOPPING) }
@@ -774,3 +795,24 @@ internal fun scaledVideoSize(srcW: Int, srcH: Int): Pair<Int, Int> {
  */
 internal fun rebasedVideoPts(rawPtsUs: Long, basePtsUs: Long, pausedTotalUs: Long): Long =
     (rawPtsUs - basePtsUs - pausedTotalUs).coerceAtLeast(0L)
+
+/**
+ * Runs an action at most once, swallowing its failure (v0.12.3).
+ *
+ * `MediaCodec.signalEndOfInputStream()` throws IllegalStateException when
+ * the encoder is already in EOS state — and the video drain thread calls
+ * it speculatively on every no-output tick after Stop.  The second call
+ * used to escape the raw thread and crash the whole app (a 76 s recording
+ * sometimes won the race; longer recordings essentially never did).
+ */
+internal class EosGuard {
+    private val signaled = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    val isSignaled: Boolean get() = signaled.get()
+
+    fun signalOnce(action: () -> Unit) {
+        if (signaled.compareAndSet(false, true)) {
+            runCatching { action() }
+        }
+    }
+}

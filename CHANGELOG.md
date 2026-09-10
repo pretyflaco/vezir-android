@@ -6,6 +6,22 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.12.3 — fix: app crashed when stopping a screen recording
+
+### Fixed
+
+- **The app crashed when pressing Stop on a screen recording** (always on
+  long recordings; occasionally on short ones).  The video drain thread
+  called `signalEndOfInputStream()` speculatively on every no-output tick
+  after Stop — the second call throws `IllegalStateException` (encoder
+  already in EOS state), and uncaught in a raw thread it killed the whole
+  process.  EOS signaling now goes through an exactly-once `EosGuard`
+  (both the drain thread and the pipeline's final signal), and the drain
+  thread is wrapped so an unexpected encoder failure degrades to a
+  graceful stop (finalizing what was muxed so far) instead of crashing.
+  Consequence of the old crash: the in-progress MP4 was never finalized
+  (no moov atom) — recordings lost that way need external repair.
+
 ## 0.12.2 — fix: rebased video timestamps (server frame extraction)
 
 ### Fixed
