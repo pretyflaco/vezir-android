@@ -339,7 +339,7 @@ class Prefs(context: Context) : TeamCredentialBacking {
          */
         val PRESET_OPTIONS: List<Pair<String, String>> = listOf(
             "high-quality" to "High Quality \u2014 Sonnet 4.6",
-            "confidential" to "Confidential \u2014 DeepSeek V4 Pro (TEE)",
+            "confidential" to "Confidential \u2014 GLM-5.3 Flash (TEE)",
             "alternative" to "Alternative \u2014 Kimi K2.6",
         )
 

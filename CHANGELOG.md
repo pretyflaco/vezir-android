@@ -6,6 +6,21 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## Unreleased
+
+### Fixed
+
+- **Confidential preset label was two model migrations out of date.**  The
+  picker read "Confidential — DeepSeek V4 Pro (TEE)", a model Tinfoil
+  retired in 2026-07.  It is now "Confidential — GLM-5.3 Flash (TEE)",
+  matching millet-pipeline 0.18.1.  Display-only: the preset id sent to
+  the server (`confidential`) is unchanged, and the server resolves the
+  actual model, so no behaviour changes.
+
+  Worth noting for context: `confidential` is this client's **default**
+  preset, so when Tinfoil silently retired `glm-5-2` on ~2026-09-11 every
+  Android recording lost its summary until millet-pipeline 0.18.1.
+
 ## 0.13.0 — generic Nostr signer sign-in + truthful refresh errors
 
 ### Changed
