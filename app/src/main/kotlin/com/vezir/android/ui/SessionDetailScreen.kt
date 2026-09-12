@@ -191,6 +191,20 @@ fun SessionDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Attestation: state provenance in full here (the session list
+            // badges only the exception).  Unknown provenance says nothing
+            // rather than guessing -- an older server sends no such field.
+            if (s.summary_provenance != null) {
+                MonoStatus(
+                    "summary ${s.summary_provenance} " +
+                        if (s.isAttested) "(hardware-attested TEE)" else "(not attested)",
+                    color = if (s.isUnattested) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             if (s.isPersonal) {
                 MonoStatus(
                     "personal (not visible to team)",
@@ -280,8 +294,10 @@ fun SessionDetailScreen(
 
         // Retry summary dialog with preset + language picker.
         if (showRetrySummaryDialog) {
+            // A stored session may carry a retired preset id; coerce it to
+            // one that is still offered so the radio group has a selection.
             var chosenPreset by remember {
-                mutableStateOf(s.summary_preset ?: Prefs.DEFAULT_PRESET)
+                mutableStateOf(Prefs.offeredPresetOr(s.summary_preset))
             }
             var chosenLang by remember { mutableStateOf("auto") }
             AlertDialog(
@@ -289,38 +305,15 @@ fun SessionDetailScreen(
                 title = { Text("Retry summary") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (s.summary_preset == "confidential" && chosenPreset != "confidential") {
-                            Text(
-                                "Switching from Confidential to ${Prefs.presetLabelFor(chosenPreset).substringBefore(" \u2014")} " +
-                                    "will send the transcript to a different provider.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
+                        // The old "switching providers will send your
+                        // transcript elsewhere" warning is gone: every
+                        // backend is private now, so there is no such
+                        // switch to warn about.
                         Text(
-                            "Preset",
-                            style = MaterialTheme.typography.labelMedium,
+                            "Summarized in a hardware-attested TEE.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Prefs.PRESET_OPTIONS.forEach { (id, label) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { chosenPreset = id }
-                                    .padding(vertical = 4.dp),
-                            ) {
-                                RadioButton(
-                                    selected = chosenPreset == id,
-                                    onClick = { chosenPreset = id },
-                                )
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(start = 4.dp),
-                                )
-                            }
-                        }
                         Text(
                             "Summary language",
                             style = MaterialTheme.typography.labelMedium,

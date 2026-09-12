@@ -6,20 +6,53 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
-## Unreleased
+## 0.14.0 — summary attestation; preset picker retired
+
+Needs **server ≥ 0.20.0** for the attestation display (older servers send
+no provenance; the app simply shows nothing rather than guessing).
+
+### Added
+
+- **Attestation.**  Session detail states where a summary came from —
+  `summary tinfoil/glm-5-3-flash (hardware-attested TEE)`.  The session
+  list flags **only the exception**: a red `unattested` on a summary that
+  demonstrably did not come from a TEE (anything produced before the
+  cloud backends were removed).  A positive badge would sit on every new
+  row and stop being read.  Sessions with unknown provenance are not
+  flagged — absence of evidence isn't evidence of absence.
+
+### Changed
+
+- **The preset picker is retired.**  millet 0.19.0 removed every
+  non-private summary backend, so there is nothing left to trade off and
+  only the default is offered.  The retired ids stay accepted by the
+  server until 0.22.0, so a stored `high-quality` session still renders
+  (with a "(retired)" label) and is coerced to the offered preset rather
+  than leaving the picker with no selection.
+- **Dropped the "switching providers" warning** in the retry-summary
+  dialog.  It warned that changing preset "will send the transcript to a
+  different provider" — no longer possible, since every backend is
+  private.  Replaced with a plain statement that the summary is produced
+  in a hardware-attested TEE.
 
 ### Fixed
 
 - **Confidential preset label was two model migrations out of date.**  The
   picker read "Confidential — DeepSeek V4 Pro (TEE)", a model Tinfoil
   retired in 2026-07.  It is now "Confidential — GLM-5.3 Flash (TEE)",
-  matching millet-pipeline 0.18.1.  Display-only: the preset id sent to
-  the server (`confidential`) is unchanged, and the server resolves the
-  actual model, so no behaviour changes.
+  matching millet-pipeline 0.18.1+.  Display-only: the preset id sent to
+  the server (`confidential`) is unchanged.
 
   Worth noting for context: `confidential` is this client's **default**
   preset, so when Tinfoil silently retired `glm-5-2` on ~2026-09-11 every
-  Android recording lost its summary until millet-pipeline 0.18.1.
+  Android recording would have lost its summary until millet-pipeline
+  0.18.1 — no recording happened to be attempted in that window.
+
+### Tests
+
+9 new unit tests: preset retirement (offered set, legacy labels, coercion)
+and attestation semantics (TEE vs non-TEE vs unknown, and that a
+pre-0.20.0 response without the field still deserializes).
 
 ## 0.13.0 — generic Nostr signer sign-in + truthful refresh errors
 

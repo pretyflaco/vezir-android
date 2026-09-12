@@ -90,8 +90,11 @@ fun RecordScreen(
     // is sticky in Prefs (which itself defaults to "confidential" on a
     // fresh install — see Prefs.DEFAULT_PRESET).  Mutations are persisted
     // immediately so the next launch remembers the last-used preset.
+    // A sticky pref written by an older build may name a retired preset
+    // ("high-quality"/"alternative"), which is no longer offered in the
+    // dropdown -- coerce it so the field shows a real selection.
     var preset by remember {
-        mutableStateOf(prefs.summaryPreset ?: Prefs.DEFAULT_PRESET)
+        mutableStateOf(Prefs.offeredPresetOr(prefs.summaryPreset))
     }
     // Per-upload privacy toggles, both sticky across launches.
     // Defaults: auto-label ON, sync ON (matches server defaults; the

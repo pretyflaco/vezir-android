@@ -333,18 +333,32 @@ class Prefs(context: Context) : TeamCredentialBacking {
          * Preset ids and display labels. Shared by RecordScreen (upload
          * dropdown) and SessionDetailScreen (retry-summary picker).
          *
-         * Ids must match the server's accepted values (high-quality,
-         * confidential, alternative -- see vezir/cli.py and
-         * meet/summarize.py SUMMARY_PRESETS).
+         * The preset axis is retired (server 0.20.0 / millet 0.19.0): every
+         * summary backend is private now -- a hardware-attested TEE, or a
+         * local model -- so there is nothing left to trade off.  Only the
+         * default is offered.  The legacy ids ("high-quality",
+         * "alternative") are still ACCEPTED by the server until 0.22.0, so
+         * older sessions that carry them keep working; see
+         * [presetLabelFor], which must not return a blank label for them.
          */
         val PRESET_OPTIONS: List<Pair<String, String>> = listOf(
-            "high-quality" to "High Quality \u2014 Sonnet 4.6",
             "confidential" to "Confidential \u2014 GLM-5.3 Flash (TEE)",
-            "alternative" to "Alternative \u2014 Kimi K2.6",
+        )
+
+        /** Labels for ids no longer offered, kept so old sessions render. */
+        private val LEGACY_PRESET_LABELS: Map<String, String> = mapOf(
+            "high-quality" to "High Quality (retired)",
+            "alternative" to "Alternative (retired)",
         )
 
         fun presetLabelFor(id: String): String =
-            PRESET_OPTIONS.firstOrNull { it.first == id }?.second ?: id
+            PRESET_OPTIONS.firstOrNull { it.first == id }?.second
+                ?: LEGACY_PRESET_LABELS[id]
+                ?: id
+
+        /** Coerce a stored/legacy preset to one that is still offered. */
+        fun offeredPresetOr(id: String?): String =
+            if (PRESET_OPTIONS.any { it.first == id }) id!! else DEFAULT_PRESET
 
         /**
          * Summary template for an upload filename, or null for the default

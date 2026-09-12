@@ -387,6 +387,18 @@ private fun SessionCard(
                             modifier = Modifier.padding(end = 4.dp),
                         )
                     }
+                    // Only the exception is badged.  Every summary produced
+                    // since millet 0.19.0 is TEE-attested, so a positive
+                    // badge would sit on every row and stop being read.
+                    // Unknown provenance is not flagged.
+                    if (session.isUnattested) {
+                        Text(
+                            "unattested",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(end = 6.dp),
+                        )
+                    }
                     StatusBadge(session.status)
                 }
             }

@@ -75,6 +75,11 @@ class SessionApi(
         val error: String? = null,
         val summary_error: String? = null,
         val sync_error: String? = null,
+        /**
+         * "<backend>/<model>" that produced the summary (server >= 0.20.0).
+         * Null against an older server, or when no summary exists.
+         */
+        val summary_provenance: String? = null,
         val artifacts: String? = null,
     ) {
         /** Parse the JSON-encoded artifacts string into a map. */
@@ -92,6 +97,19 @@ class SessionApi(
         val isPersonal: Boolean get() = (personal ?: 0) != 0
         val isTerminal: Boolean get() =
             status in setOf("done", "error", "empty", "imported")
+
+        /** True when the summary was produced inside a hardware-attested TEE. */
+        val isAttested: Boolean
+            get() = summary_provenance?.substringBefore('/') in
+                setOf("tinfoil", "tinfoil-tee")
+
+        /**
+         * True only when we positively know the summary was NOT attested.
+         * Unknown provenance (older server, no summary) is neither attested
+         * nor unattested -- absence of evidence isn't evidence of absence.
+         */
+        val isUnattested: Boolean
+            get() = !summary_provenance.isNullOrBlank() && !isAttested
     }
 
     @Serializable
