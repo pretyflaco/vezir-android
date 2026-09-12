@@ -9,6 +9,9 @@
 
 # vezir-android
 
+[![GitHub release downloads](https://img.shields.io/github/downloads/pretyflaco/vezir-android/total.svg)](https://github.com/pretyflaco/vezir-android/releases)
+[![Latest release](https://img.shields.io/github/v/release/pretyflaco/vezir-android.svg)](https://github.com/pretyflaco/vezir-android/releases/latest)
+
 Android client for [Vezir](https://github.com/pretyflaco/vezir) —
 self-hosted team intelligence. Record a meeting on the phone (system audio
 + microphone), encode to OGG/Opus on-device, and upload to your Vezir
@@ -18,7 +21,7 @@ labels speakers, and syncs to your team archive. Sign in with **Nostr** or
 
 ## Status
 
-Alpha (**0.9.0**). Sideload only; no Play Store. Full history in
+Alpha (**0.14.0**). Sideload only; no Play Store. Full history in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Sign in
@@ -51,18 +54,21 @@ dropdown.
 |---|---|
 | Sign in | Nostr (any NIP-55 signer) or Google, per above. |
 | Record meeting | **Start recording** → Android `MediaProjection` consent → captures system playback + mic, mixes with soft-clip, encodes Opus. 3h hard cap. |
-| Save | OGG lands in `Music/Vezir/vezir-<timestamp>.ogg`. |
-| Summarization preset | Dropdown: **High Quality** (Sonnet), **Confidential** (TEE; default on Android), **Alternative**. Sent as `summary_preset`. |
+| Save | Audio OGG lands in `Music/Vezir/vezir-<timestamp>.ogg`; screen recordings land in `Movies/Vezir/` as MP4. |
+| Record screen | **Record screen + mic (MP4)** → `MediaProjection` consent → H.264 screen capture muxed with mic audio, saved to `Movies/Vezir/`. Uploads as video; the server samples cue frames from it. |
+| Summary template | Sticky **iteration plan** toggle for a narrated walkthrough of a build — the server summarizes it from the screen, not just the narration. Needs server ≥ 0.18.0. |
+| Attestation | Session detail states the backend and model that produced the summary (e.g. `tinfoil/glm-5-3-flash (hardware-attested TEE)`); the list badges only the exception, `unattested`. Needs server ≥ 0.20.0. |
 | Auto-label / Sync / Personal | Switches on the record screen (sticky, except Personal which resets per launch), mirroring the desktop toggles. |
 | Upload | Resumable multipart upload with progress; polls `/api/sessions/{id}` to completion. |
 | Browse | Sessions tab: status, transcripts, summaries, artifacts. |
-| Import existing recording | SAF picker → decode → resample → Opus. Screen recordings, voice memos, prior Vezir OGGs all work. |
+| Import existing recording | SAF picker. Audio is decoded → resampled → Opus; an **MP4/MOV is copied through untouched** (transcoding it discarded the video, and the video is the point). Voice memos and prior Vezir OGGs work too. |
 
 ## Requirements
 
 - Android 10 (API 29)+.
-- A reachable Vezir server, **≥ 0.8.0** (for the Nostr/Google sign-in
-  endpoints). 0.8.3+ recommended (Google device-flow DNS resilience).
+- A reachable Vezir server. **≥ 0.20.0** for everything in this README
+  (attestation display); ≥ 0.18.0 for video upload and the iteration-plan
+  template; ≥ 0.8.0 is the bare floor for Nostr/Google sign-in.
 - Your identity authorized on the server (`npub` or `@domain` email) and a
   team membership — ask your operator.
 - For Nostr sign-in: a NIP-55 signer app
@@ -75,7 +81,7 @@ dropdown.
 The signed APK is attached to each [GitHub Release](https://github.com/pretyflaco/vezir-android/releases/latest).
 
 ```bash
-adb install -r vezir-android-0.7.0.apk
+adb install -r vezir-android-0.14.0.apk
 ```
 
 Or open the APK in your file manager and allow install from "unknown
@@ -125,8 +131,11 @@ the in-app update check picks up new releases automatically.
   the server.
 - HTTPS only against the public server cert; an optional internal CA
   (legacy enrollment) is trusted *in addition to* the public store.
-- Recordings are stored unencrypted in `Music/Vezir/` — treat the phone's
-  storage accordingly.
+- Recordings are stored unencrypted in `Music/Vezir/` (audio) and
+  `Movies/Vezir/` (screen recordings) — treat the phone's storage
+  accordingly. A screen recording is the more sensitive of the two: it
+  captures whatever was on screen, including anything you did not intend
+  to demo.
 
 ## How it talks to the server
 
