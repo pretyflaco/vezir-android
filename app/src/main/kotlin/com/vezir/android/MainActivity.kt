@@ -121,6 +121,8 @@ private sealed class Screen {
         val autoLabel: Boolean,
         val sync: Boolean,
         val personal: Boolean,
+        /** Destination team pinned at record/import time (v0.15.0). */
+        val teamId: String? = null,
     ) : Screen()
     data class UploadMulti(
         val uris: List<Uri>,
@@ -130,10 +132,18 @@ private sealed class Screen {
         val autoLabel: Boolean,
         val sync: Boolean,
         val personal: Boolean,
+        /** Destination team pinned at record/import time (v0.15.0). */
+        val teamId: String? = null,
     ) : Screen()
-    data class Label(val sessionId: String) : Screen()
-    data class SessionDetail(val sessionId: String) : Screen()
-    data class ArtifactView(val sessionId: String, val artifactName: String) : Screen()
+    // teamId: the session's team when it isn't the active one (v0.15.0,
+    // e.g. right after uploading to a non-active team); null = active team.
+    data class Label(val sessionId: String, val teamId: String? = null) : Screen()
+    data class SessionDetail(val sessionId: String, val teamId: String? = null) : Screen()
+    data class ArtifactView(
+        val sessionId: String,
+        val artifactName: String,
+        val teamId: String? = null,
+    ) : Screen()
 }
 
 @Composable
@@ -348,11 +358,12 @@ private fun AppRoot() {
                 teams = teams,
                 activeTeamId = teamStore.activeId(),
                 onSwitchTeam = { switchToTeam(it) },
-                onUpload = { uri, name, title, preset, autoLabel, sync ->
+                onUpload = { uri, name, title, preset, autoLabel, sync, teamId ->
                     push(
                         Screen.Upload(
                             uri, name, title, preset, autoLabel, sync,
                             personal = prefs.personal,
+                            teamId = teamId,
                         ),
                     )
                 },
@@ -360,11 +371,13 @@ private fun AppRoot() {
             Screen.Import -> ImportScreen(
                 onCancel = { pop() },
                 onImported = { uri, name ->
+                    // v0.15.0: pin the team the import was started in.
                     replaceTop(
                         Screen.Upload(
                             uri, name, null,
                             prefs.summaryPreset, prefs.autoLabel, prefs.sync,
                             personal = prefs.personal,
+                            teamId = teamStore.activeId(),
                         ),
                     )
                 },
@@ -374,6 +387,7 @@ private fun AppRoot() {
                             uris, names, null,
                             prefs.summaryPreset, prefs.autoLabel, prefs.sync,
                             personal = prefs.personal,
+                            teamId = teamStore.activeId(),
                         ),
                     )
                 },
@@ -387,10 +401,11 @@ private fun AppRoot() {
                 autoLabel = s.autoLabel,
                 sync = s.sync,
                 personal = s.personal,
+                teamId = s.teamId,
                 onDismiss = { pop() },
-                onLabel = { sessionId -> push(Screen.Label(sessionId)) },
+                onLabel = { sessionId -> push(Screen.Label(sessionId, s.teamId)) },
                 onSessionDetail = { sessionId ->
-                    replaceTop(Screen.SessionDetail(sessionId))
+                    replaceTop(Screen.SessionDetail(sessionId, s.teamId))
                 },
             )
             is Screen.UploadMulti -> UploadMultiScreen(
@@ -402,15 +417,17 @@ private fun AppRoot() {
                 autoLabel = s.autoLabel,
                 sync = s.sync,
                 personal = s.personal,
+                teamId = s.teamId,
                 onDismiss = { pop() },
-                onLabel = { sessionId -> push(Screen.Label(sessionId)) },
+                onLabel = { sessionId -> push(Screen.Label(sessionId, s.teamId)) },
                 onSessionDetail = { sessionId ->
-                    replaceTop(Screen.SessionDetail(sessionId))
+                    replaceTop(Screen.SessionDetail(sessionId, s.teamId))
                 },
             )
             is Screen.Label -> LabelScreen(
                 prefs = prefs,
                 sessionId = s.sessionId,
+                teamId = s.teamId,
                 onDone = { pop() },
                 onCancel = { pop() },
             )
@@ -436,16 +453,18 @@ private fun AppRoot() {
             is Screen.SessionDetail -> SessionDetailScreen(
                 prefs = prefs,
                 sessionId = s.sessionId,
+                teamId = s.teamId,
                 onBack = { pop() },
-                onLabel = { sessionId -> push(Screen.Label(sessionId)) },
+                onLabel = { sessionId -> push(Screen.Label(sessionId, s.teamId)) },
                 onArtifact = { sessionId, name ->
-                    push(Screen.ArtifactView(sessionId, name))
+                    push(Screen.ArtifactView(sessionId, name, s.teamId))
                 },
             )
             is Screen.ArtifactView -> ArtifactViewerScreen(
                 prefs = prefs,
                 sessionId = s.sessionId,
                 artifactName = s.artifactName,
+                teamId = s.teamId,
                 onBack = { pop() },
             )
             Screen.Settings -> SettingsScreen(

@@ -63,15 +63,22 @@ class UploadWorker(
         val sync = inputData.getBoolean(KEY_SYNC, true)
         val personal = inputData.getBoolean(KEY_PERSONAL, false)
         val preferredUrl = inputData.getString(KEY_BASE_URL)
+        // v0.15.0: the destination team rides with the work (a slug — not a
+        // secret).  Never fall back to the ACTIVE team when one was pinned:
+        // the user may have switched teams since, and that would silently
+        // send the meeting to the wrong team (incident 2026-10-02, desktop).
+        val teamId = inputData.getString(KEY_TEAM_ID)
 
         // Credentials are NEVER passed through WorkManager's Data (its DB
         // is plaintext on disk); read them fresh from encrypted prefs.
         val prefs = Prefs.get(applicationContext)
-        val cred = prefs.activeCredential()
-            ?: return fail("not signed in")
+        val cred = prefs.credentialFor(teamId)
+            ?: return fail(
+                if (teamId != null) "not signed in to team $teamId" else "not signed in",
+            )
         val baseUrl = preferredUrl ?: cred.url
         val tokenProvider: () -> String = {
-            prefs.activeCredential()?.token ?: cred.token
+            prefs.credentialFor(teamId)?.token ?: cred.token
         }
 
         // Multi-file meeting path (vezir >= 0.9.0): a list of already-
@@ -126,7 +133,7 @@ class UploadWorker(
         val fileName = inputData.getString(KEY_FILE_NAME) ?: "recording.ogg"
 
         val stateStore = UploadStateStore(applicationContext)
-        val existing = stateStore.get(contentUri.toString(), baseUrl)
+        val existing = stateStore.get(contentUri.toString(), baseUrl, cred.id)
 
         val resumable = ResumableUploader(
             baseUrl, tokenProvider, cred.id,
@@ -146,7 +153,7 @@ class UploadWorker(
                 progress = progress, onRetry = onRetry,
                 existingUploadId = existing?.uploadId,
                 onSession = { id ->
-                    stateStore.put(contentUri.toString(), id, baseUrl)
+                    stateStore.put(contentUri.toString(), id, baseUrl, cred.id)
                 },
             )) {
                 is ResumableUploader.Outcome.Success -> {
@@ -263,6 +270,7 @@ class UploadWorker(
         private const val KEY_SYNC = "sync"
         private const val KEY_PERSONAL = "personal"
         private const val KEY_BASE_URL = "base_url"
+        private const val KEY_TEAM_ID = "team_id"
         const val OUT_SESSION_ID = "session_id"
         const val OUT_ERROR = "error"
 
@@ -282,6 +290,7 @@ class UploadWorker(
             sync: Boolean,
             personal: Boolean,
             summaryTemplate: String? = null,
+            teamId: String? = null,
         ) {
             val request = OneTimeWorkRequestBuilder<UploadWorker>()
                 .setInputData(
@@ -295,6 +304,7 @@ class UploadWorker(
                         KEY_SYNC to sync,
                         KEY_PERSONAL to personal,
                         KEY_BASE_URL to baseUrl,
+                        KEY_TEAM_ID to teamId,
                     ),
                 )
                 .setConstraints(
@@ -327,6 +337,7 @@ class UploadWorker(
             sync: Boolean,
             personal: Boolean,
             summaryTemplate: String? = null,
+            teamId: String? = null,
         ) {
             val request = OneTimeWorkRequestBuilder<UploadWorker>()
                 .setInputData(
@@ -340,6 +351,7 @@ class UploadWorker(
                         KEY_SYNC to sync,
                         KEY_PERSONAL to personal,
                         KEY_BASE_URL to baseUrl,
+                        KEY_TEAM_ID to teamId,
                     ),
                 )
                 .setConstraints(

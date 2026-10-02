@@ -52,7 +52,15 @@ object TokenRefresher {
             return@withLock null
         }
 
-        val active = store.getActive() ?: return@withLock null
+        // v0.15.0: refresh the entry that holds the expired token — an
+        // upload may target a non-active team (pinned per recording).  When
+        // no entry holds it any more, a prior caller already rotated it;
+        // fall back to the active entry (the check below hands its fresh
+        // token back).
+        val active = expiredToken
+            ?.let { t -> store.loadAll().firstOrNull { it.token == t } }
+            ?: store.getActive()
+            ?: return@withLock null
         val oldToken = expiredToken ?: active.token
 
         // Another caller may have already rotated while we waited on the

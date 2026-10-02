@@ -34,6 +34,8 @@ fun UploadScreen(
     autoLabel: Boolean,
     sync: Boolean,
     personal: Boolean = false,
+    /** Destination team pinned by the caller (v0.15.0); null = active team. */
+    teamId: String? = null,
     onDismiss: () -> Unit,
     onLabel: ((String) -> Unit)? = null,
     onSessionDetail: ((String) -> Unit)? = null,
@@ -41,7 +43,9 @@ fun UploadScreen(
     val context = LocalContext.current
     val snapshot by UploadController.state.collectAsState()
 
-    val cred = remember { prefs.activeCredential() }
+    // v0.15.0: the recording's own destination team, never silently the
+    // active one (which may have been switched since recording started).
+    val cred = remember(teamId) { prefs.credentialFor(teamId) }
     // v0.12.0: video uploads get millet's iteration-plan template when the
     // user has the toggle on (Prefs.iterationPlan, default ON).
     val summaryTemplate = remember(fileName) {
@@ -52,7 +56,10 @@ fun UploadScreen(
     // The Uploader has its own retry logic + streaming, so we can't wrap
     // it with ResilientApi.execute{}.  Instead, resolve the URL upfront.
     LaunchedEffect(contentUri, fileName) {
-        val c = cred ?: return@LaunchedEffect
+        val c = cred ?: run {
+            UploadController.setError("not signed in to team ${teamId ?: "?"}")
+            return@LaunchedEffect
+        }
         val s = UploadController.state.value
         if (s.state == UploadController.State.IDLE) {
             // Don't burn an upload on a session that's already expired:
@@ -98,6 +105,7 @@ fun UploadScreen(
                 sync = sync,
                 personal = personal,
                 summaryTemplate = summaryTemplate,
+                teamId = c.id,
             )
         }
     }
@@ -123,7 +131,7 @@ fun UploadScreen(
                 c.url, c.altUrls, c.token, c.id, c.caPem,
             )
             val puller = com.vezir.android.net.ArtifactPuller(
-                api, context, prefs.activeTeamId ?: "default",
+                api, context, c.id ?: "default",
             )
             try {
                 puller.pullSingleSession(snapshot.sessionId!!)
@@ -145,7 +153,7 @@ fun UploadScreen(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            "to ${cred?.url ?: "(unset)"}",
+            "to ${cred?.id?.let { "$it · " } ?: ""}${cred?.url ?: "(unset)"}",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -313,16 +321,21 @@ fun UploadMultiScreen(
     autoLabel: Boolean,
     sync: Boolean,
     personal: Boolean = false,
+    /** Destination team pinned by the caller (v0.15.0); null = active team. */
+    teamId: String? = null,
     onDismiss: () -> Unit,
     onLabel: ((String) -> Unit)? = null,
     onSessionDetail: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snapshot by UploadController.state.collectAsState()
-    val cred = remember { prefs.activeCredential() }
+    val cred = remember(teamId) { prefs.credentialFor(teamId) }
 
     LaunchedEffect(uris) {
-        val c = cred ?: return@LaunchedEffect
+        val c = cred ?: run {
+            UploadController.setError("not signed in to team ${teamId ?: "?"}")
+            return@LaunchedEffect
+        }
         if (UploadController.state.value.state != UploadController.State.IDLE) {
             return@LaunchedEffect
         }
@@ -361,6 +374,7 @@ fun UploadMultiScreen(
             autoLabel = autoLabel,
             sync = sync,
             personal = personal,
+            teamId = c.id,
         )
     }
 
@@ -374,7 +388,7 @@ fun UploadMultiScreen(
                 c.url, c.altUrls, c.token, c.id, c.caPem,
             )
             val puller = com.vezir.android.net.ArtifactPuller(
-                api, context, prefs.activeTeamId ?: "default",
+                api, context, c.id ?: "default",
             )
             try {
                 puller.pullSingleSession(snapshot.sessionId!!)
@@ -396,7 +410,7 @@ fun UploadMultiScreen(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            "to ${cred?.url ?: "(unset)"}",
+            "to ${cred?.id?.let { "$it · " } ?: ""}${cred?.url ?: "(unset)"}",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

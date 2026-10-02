@@ -89,6 +89,7 @@ object UploadController {
         sync: Boolean = true,
         personal: Boolean = false,
         summaryTemplate: String? = null,
+        teamId: String? = null,
     ) {
         pollJob?.cancel()
         pollJob = null
@@ -97,6 +98,7 @@ object UploadController {
             context, baseUrl, contentUri, fileName, title,
             summaryPreset, autoLabel, sync, personal,
             summaryTemplate = summaryTemplate,
+            teamId = teamId,
         )
     }
 
@@ -115,6 +117,7 @@ object UploadController {
         sync: Boolean = true,
         personal: Boolean = false,
         summaryTemplate: String? = null,
+        teamId: String? = null,
     ) {
         pollJob?.cancel()
         pollJob = null
@@ -123,6 +126,7 @@ object UploadController {
             context, baseUrl, uris, fileNames, title,
             summaryPreset, autoLabel, sync, personal,
             summaryTemplate = summaryTemplate,
+            teamId = teamId,
         )
     }
 

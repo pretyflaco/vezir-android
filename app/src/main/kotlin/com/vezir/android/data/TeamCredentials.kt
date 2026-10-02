@@ -124,6 +124,18 @@ class TeamCredentialStore(private val prefs: TeamCredentialBacking) {
             ?: teams.firstOrNull() // fallback to first if active is stale
     }
 
+    /** The credential for team [id], or null if not enrolled (v0.15.0). */
+    fun forId(id: String): TeamCredential? = loadAll().firstOrNull { it.id == id }
+
+    /**
+     * The credential an upload must use (v0.15.0): the recording's own
+     * destination team when one was pinned — never silently the active
+     * team, which may have been switched since — else the active team.
+     * Null when [teamId] is no longer enrolled (the caller fails loudly).
+     */
+    fun forUpload(teamId: String?): TeamCredential? =
+        if (teamId != null) forId(teamId) else getActive()
+
     /** True if multi-team credentials are configured. */
     fun isConfigured(): Boolean = loadAll().isNotEmpty()
 

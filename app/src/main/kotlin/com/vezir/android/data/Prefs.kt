@@ -283,6 +283,18 @@ class Prefs(context: Context) : TeamCredentialBacking {
      *   2. Legacy single-token keys (`serverUrl` + `token`).
      *   3. null (not configured).
      */
+    /**
+     * Credential for uploading to [teamId] (v0.15.0): that team's entry
+     * when [teamId] is set (null if it's no longer enrolled — never the
+     * active team instead), else the active credential.
+     */
+    fun credentialFor(teamId: String?): ActiveCredential? {
+        if (teamId == null) return activeCredential()
+        return TeamCredentialStore(this).forUpload(teamId)?.let {
+            ActiveCredential(it.url, it.token, it.caPem, it.altUrls, it.id)
+        }
+    }
+
     fun activeCredential(): ActiveCredential? {
         // 1. Multi-team store
         val store = TeamCredentialStore(this)

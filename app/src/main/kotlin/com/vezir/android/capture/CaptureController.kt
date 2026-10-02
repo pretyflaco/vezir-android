@@ -65,8 +65,35 @@ object CaptureController {
         _state.value = transform(_state.value)
     }
 
+    /**
+     * Destination team of the recording in progress / just finished
+     * (v0.15.0).  Pinned when the user presses Start and kept until the
+     * finished recording is acknowledged; null while idle (the Record
+     * screen then shows the active team).
+     *
+     * Incident 2026-10-02 (desktop): the upload went to whichever team was
+     * active when it RAN, so switching teams mid-recording — or before a
+     * WorkManager retry — silently redirected a meeting.  The destination
+     * now belongs to the recording; switching the app's active team
+     * doesn't move it.  Kept outside [Snapshot] because the capture
+     * services replace the snapshot wholesale on start.
+     */
+    private val _destination = MutableStateFlow<String?>(null)
+    val destination: StateFlow<String?> = _destination.asStateFlow()
+
+    /** Pin the destination when a recording starts. */
+    fun pinDestination(teamId: String?) {
+        _destination.value = teamId
+    }
+
+    /** Deliberately retarget the recording (while recording, paused or finished). */
+    fun setDestination(teamId: String) {
+        _destination.value = teamId
+    }
+
     /** UI can call this after viewing a finished session to reset to IDLE. */
     fun acknowledgeFinished() {
         _state.value = Snapshot()
+        _destination.value = null
     }
 }

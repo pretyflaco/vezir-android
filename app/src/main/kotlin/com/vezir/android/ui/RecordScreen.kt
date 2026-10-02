@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -80,10 +81,35 @@ fun RecordScreen(
         summaryPreset: String?,
         autoLabel: Boolean,
         sync: Boolean,
+        teamId: String?,
     ) -> Unit,
 ) {
     val context = LocalContext.current
     val snapshot by CaptureController.state.collectAsState()
+    // v0.15.0: where THIS recording uploads.  Pinned at Start; null while
+    // idle (then the active team is shown and choosing one switches it).
+    val pinnedTeam by CaptureController.destination.collectAsState()
+    val destinationTeam = pinnedTeam ?: activeTeamId
+    fun teamName(id: String?): String =
+        teams.firstOrNull { it.id == id }?.label?.ifBlank { null } ?: id ?: "?"
+
+    // Switching the app's active team (header) while a recording holds its
+    // own destination doesn't redirect it — say so, once per switch.
+    var lastActiveTeam by remember { mutableStateOf(activeTeamId) }
+    LaunchedEffect(activeTeamId) {
+        if (activeTeamId != lastActiveTeam) {
+            lastActiveTeam = activeTeamId
+            val pinned = CaptureController.destination.value
+            if (pinned != null && pinned != activeTeamId) {
+                android.widget.Toast.makeText(
+                    context,
+                    "This recording still uploads to ${teamName(pinned)} — " +
+                        "change it under the title.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
 
     var title by remember { mutableStateOf("") }
     // Preset id sent to the server with the upload.  Defaults to whatever
@@ -140,6 +166,9 @@ fun RecordScreen(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            // v0.15.0: pin the destination as the recording starts — from
+            // here on, switching the app's team doesn't move it.
+            CaptureController.pinDestination(activeTeamId)
             // One consent token serves both services: audio CaptureService
             // (playback capture) or ScreenCaptureService (video+mic).
             val startIntent = if (screenMode)
@@ -192,6 +221,24 @@ fun RecordScreen(
             keyboardOptions = KeyboardOptions.Default,
             modifier = Modifier.fillMaxWidth(),
             enabled = idleish,
+        )
+
+        // v0.15.0: destination team of this recording.  Idle → shows (and
+        // switches) the active team; once started → retargets only this
+        // recording, which keeps its team even if the app's team changes.
+        DestinationTeamRow(
+            teams = teams,
+            selected = destinationTeam,
+            label = teamName(destinationTeam),
+            pinned = pinnedTeam != null,
+            enabled = !starting && !stopping,
+            onSelect = { id ->
+                if (CaptureController.destination.value != null) {
+                    CaptureController.setDestination(id)
+                } else {
+                    onSwitchTeam?.invoke(id)
+                }
+            },
         )
 
         // Summarization preset dropdown.  Choice is persisted to Prefs so
@@ -477,13 +524,13 @@ fun RecordScreen(
                     if (finishedUri != null) {
                         onUpload(
                             finishedUri, finishedName, finishedTitle,
-                            preset, autoLabel, sync,
+                            preset, autoLabel, sync, destinationTeam,
                         )
                     }
                 },
                 enabled = finishedUri != null,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-            ) { Text("Upload to vezir") }
+            ) { Text("Upload to ${teamName(destinationTeam)}") }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -507,9 +554,19 @@ fun RecordScreen(
                     modifier = Modifier.weight(1f),
                 ) { Text("Share") }
                 OutlinedButton(
-                    onClick = { CaptureController.acknowledgeFinished() },
+                    onClick = {
+                        // v0.15.0: say where the file stays (it always did;
+                        // "Dismiss" read like it was thrown away).
+                        android.widget.Toast.makeText(
+                            context,
+                            "Kept on this phone: ${snapshot.displayPath ?: finishedName}. " +
+                                "Upload it later from Settings → Import recording.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        CaptureController.acknowledgeFinished()
+                    },
                     modifier = Modifier.weight(1f),
-                ) { Text("Dismiss") }
+                ) { Text("Keep on phone") }
             }
         }
 
@@ -582,6 +639,75 @@ private fun SideEffectOnce(key: Any, block: () -> Unit) {
             block()
         } else if (key == false) {
             triggered.value = false
+        }
+    }
+}
+
+
+/**
+ * "Uploads to: <team> ▾" (v0.15.0).  A plain label with one team; a
+ * dropdown with several.
+ */
+@Composable
+private fun DestinationTeamRow(
+    teams: List<com.vezir.android.data.TeamCredential>,
+    selected: String?,
+    label: String,
+    pinned: Boolean,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (pinned) "This recording uploads to" else "Uploads to",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (teams.size <= 1) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            return@Row
+        }
+        androidx.compose.foundation.layout.Box {
+            androidx.compose.material3.TextButton(
+                onClick = { open = true },
+                enabled = enabled,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    contentDescription = "Choose the team this recording uploads to",
+                )
+            }
+            androidx.compose.material3.DropdownMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+            ) {
+                teams.forEach { team ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                team.label.ifBlank { team.id },
+                                color = if (team.id == selected)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                            )
+                        },
+                        onClick = {
+                            open = false
+                            onSelect(team.id)
+                        },
+                    )
+                }
+            }
         }
     }
 }

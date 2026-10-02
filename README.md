@@ -81,7 +81,7 @@ dropdown.
 The signed APK is attached to each [GitHub Release](https://github.com/pretyflaco/vezir-android/releases/latest).
 
 ```bash
-adb install -r vezir-android-0.14.0.apk
+adb install -r vezir-android-0.15.0.apk
 ```
 
 Or open the APK in your file manager and allow install from "unknown

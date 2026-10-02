@@ -52,10 +52,12 @@ fun ArtifactViewerScreen(
     sessionId: String,
     artifactName: String,
     onBack: () -> Unit,
+    /** The session's team when it isn't the active one (v0.15.0). */
+    teamId: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
+    val cred = remember(prefs.activeTeamId, teamId) { prefs.credentialFor(teamId) }
     val api = remember(cred) {
         cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.id, it.caPem) }
     }

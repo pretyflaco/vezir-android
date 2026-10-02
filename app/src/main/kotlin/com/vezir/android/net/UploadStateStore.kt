@@ -14,8 +14,13 @@ import android.content.Context
  * resumes from the server's offset.
  *
  * Plain (non-encrypted) SharedPreferences on purpose: the values are a
- * ULID upload id, the base URL, and a content URI — none secret, and the
- * server enforces uploader/team ownership on the id.
+ * ULID upload id, the base URL, a content URI and a team slug — none
+ * secret, and the server enforces uploader/team ownership on the id.
+ *
+ * v0.15.0: the destination team is part of the key.  A tus session is
+ * created under one team's X-Team-Id; resuming it under another team (the
+ * recording was retargeted between attempts) must start a new session
+ * rather than continue the old team's.
  */
 class UploadStateStore(context: Context) {
 
@@ -27,12 +32,13 @@ class UploadStateStore(context: Context) {
         val baseUrl: String,
     )
 
-    /** Persist the upload session for [contentUri]. */
-    fun put(contentUri: String, uploadId: String, baseUrl: String) {
+    /** Persist the upload session for [contentUri] going to [teamId]. */
+    fun put(contentUri: String, uploadId: String, baseUrl: String, teamId: String?) {
         prefs.edit()
             .putString(KEY_URI, contentUri)
             .putString(KEY_UPLOAD_ID, uploadId)
             .putString(KEY_BASE_URL, baseUrl)
+            .putString(KEY_TEAM, teamId)
             .apply()
     }
 
@@ -40,11 +46,12 @@ class UploadStateStore(context: Context) {
      * Return the persisted state for [contentUri], or null when none is
      * stored or it belongs to a different file/server (stale).
      */
-    fun get(contentUri: String, baseUrl: String): State? {
+    fun get(contentUri: String, baseUrl: String, teamId: String?): State? {
         val uri = prefs.getString(KEY_URI, null) ?: return null
         val id = prefs.getString(KEY_UPLOAD_ID, null) ?: return null
         val url = prefs.getString(KEY_BASE_URL, null) ?: return null
-        if (uri != contentUri || url != baseUrl) return null
+        val team = prefs.getString(KEY_TEAM, null)
+        if (!matches(uri, url, team, contentUri, baseUrl, teamId)) return null
         return State(uploadId = id, baseUrl = url)
     }
 
@@ -54,7 +61,18 @@ class UploadStateStore(context: Context) {
     }
 
     companion object {
+        /**
+         * Whether a stored session belongs to this upload: same file, same
+         * server, same destination team.  A state stored by a pre-0.15.0
+         * build has no team; it never matches a team-pinned upload.
+         */
+        fun matches(
+            storedUri: String, storedUrl: String, storedTeam: String?,
+            contentUri: String, baseUrl: String, teamId: String?,
+        ): Boolean = storedUri == contentUri && storedUrl == baseUrl && storedTeam == teamId
+
         private const val PREF_FILE = "vezir_upload_state"
+        private const val KEY_TEAM = "team_id"
         private const val KEY_URI = "content_uri"
         private const val KEY_UPLOAD_ID = "upload_id"
         private const val KEY_BASE_URL = "base_url"

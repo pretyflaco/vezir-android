@@ -60,6 +60,46 @@ class SessionApi(
     private val client: OkHttpClient = externalClient
         ?: HttpClients.build(caPem)
 
+    internal object MoveParsing {
+        /** Parse the move response; tolerant of missing fields. */
+        fun parseMoved(body: String, requestedTeam: String): Moved =
+            try {
+                val o = JSONObject(body)
+                Moved(
+                    fromTeam = o.optString("from_team", "").ifBlank { null },
+                    toTeam = o.optString("to_team", "").ifBlank { requestedTeam },
+                    moved = o.optBoolean("moved", true),
+                    wasSynced = o.optBoolean("was_synced", false),
+                    syncQueued = o.optBoolean("sync_queued", false),
+                    warning = o.optString("warning", "").ifBlank { null },
+                )
+            } catch (_: Exception) {
+                Moved(null, requestedTeam, true, false, false, null)
+            }
+
+        /**
+         * A 404/405 whose detail is FastAPI's generic "Not Found" / "Method
+         * Not Allowed" means the server predates 0.26.0 (no such route) —
+         * as opposed to our own 404s ("session not found", "team … not
+         * found").
+         */
+        fun moveErrorMessage(code: Int, detail: String): String =
+            if ((code == 404 || code == 405) &&
+                detail.trim().lowercase() in setOf("not found", "method not allowed")
+            ) {
+                "the server is too old to move sessions (needs vezir 0.26.0); " +
+                    "ask an admin to move it"
+            } else {
+                detail
+            }
+    }
+
+    private fun parseMoved(body: String, requestedTeam: String): Moved =
+        MoveParsing.parseMoved(body, requestedTeam)
+
+    private fun moveErrorMessage(code: Int, detail: String): String =
+        MoveParsing.moveErrorMessage(code, detail)
+
     @Serializable
     data class Session(
         val id: String,
@@ -348,6 +388,49 @@ class SessionApi(
                         Result.Ok(parseMutation(b))
                     } else {
                         Result.HttpError(resp.code, errorDetail(resp))
+                    }
+                }
+            }.getOrElse { e ->
+                if (e is IOException) Result.NetworkError(e) else throw e
+            }
+        }
+
+    /** Outcome of [moveSession] (vezir server >= 0.26.0). */
+    data class Moved(
+        val fromTeam: String?,
+        val toTeam: String,
+        val moved: Boolean,
+        val wasSynced: Boolean,
+        val syncQueued: Boolean,
+        /** E.g. "already synced to blink's git repo; that copy stays there". */
+        val warning: String?,
+    )
+
+    /**
+     * Move a session to another of the caller's teams (vezir server >=
+     * 0.26.0: ``POST /api/sessions/{id}/move``).  Must be called in the
+     * session's CURRENT team scope.  Admin or original uploader only (403
+     * otherwise), and the caller must belong to [toTeam]; 409 while the
+     * server is still processing the session.  A copy already pushed to
+     * the old team's git repo is NOT removed (reported via [Moved.warning]).
+     * With [sync], the session is queued for a sync into the new team's repo.
+     */
+    suspend fun moveSession(sessionId: String, toTeam: String, sync: Boolean): Result<Moved> =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("to_team", toTeam).put("sync", sync)
+                .toString().toRequestBody("application/json".toMediaType())
+            val req = HttpClients.authHeaders(
+                Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/sessions/$sessionId/move"),
+                token, teamId,
+            ).post(body).build()
+            runCatching {
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        Result.Ok(parseMoved(resp.body?.string().orEmpty(), toTeam))
+                    } else {
+                        val detail = errorDetail(resp)
+                        Result.HttpError(resp.code, moveErrorMessage(resp.code, detail))
                     }
                 }
             }.getOrElse { e ->

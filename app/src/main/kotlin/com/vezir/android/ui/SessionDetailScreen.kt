@@ -70,10 +70,13 @@ fun SessionDetailScreen(
     onLabel: (String) -> Unit,
     onArtifact: (String, String) -> Unit,
     onDeleted: () -> Unit = onBack,
+    /** The session's team when it isn't the active one (v0.15.0). */
+    teamId: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
+    // v0.15.0: a session uploaded to a non-active team opens in ITS team.
+    val cred = remember(prefs.activeTeamId, teamId) { prefs.credentialFor(teamId) }
     val api = remember(cred) {
         cred?.let { ResilientApi(it.url, it.altUrls, it.token, it.id, it.caPem) }
     }
@@ -283,6 +286,17 @@ fun SessionDetailScreen(
         var showDeleteDialog by remember { mutableStateOf(false) }
         var showSyncDialog by remember { mutableStateOf(false) }
         var showAutoLabelDialog by remember { mutableStateOf(false) }
+        var showMoveDialog by remember { mutableStateOf(false) }
+        // v0.15.0 "Move to team": the other teams I belong to, and whether
+        // I may move this session (uploader or admin; the server enforces
+        // it too — unknown identity shows the action and lets it decide).
+        val teamStore = remember { com.vezir.android.data.TeamCredentialStore(prefs) }
+        val myEntry = remember(cred) { cred.id?.let { teamStore.forId(it) } }
+        val otherTeams = remember(cred) {
+            teamStore.loadAll().filter { it.id != cred.id }
+        }
+        val mayMove = myEntry == null || myEntry.isAdmin ||
+            myEntry.github == null || s.github == null || myEntry.github == s.github
 
         // Primary action: Label speakers (prominent when needed).
         if (s.status == "needs_labeling") {
@@ -489,6 +503,90 @@ fun SessionDetailScreen(
             )
         }
 
+        // Move-to-team dialog (vezir server >= 0.26.0).
+        if (showMoveDialog) {
+            var target by remember { mutableStateOf(otherTeams.firstOrNull()?.id) }
+            val fromName = myEntry?.label?.ifBlank { null } ?: cred.id ?: "this team"
+            val synced = s.status == "done" && (s.sync_enabled ?: 0) != 0
+            fun doMove(sync: Boolean) {
+                val dest = target ?: return
+                showMoveDialog = false
+                scope.launch {
+                    actionBusy = true
+                    when (val r = api.execute { it.moveSession(sessionId, dest, sync) }) {
+                        is SessionApi.Result.Ok -> {
+                            val m = r.data
+                            val destName = otherTeams.firstOrNull { it.id == m.toTeam }
+                                ?.label?.ifBlank { null } ?: m.toTeam
+                            val msg = buildString {
+                                append("Moved to $destName")
+                                if (m.syncQueued) append(" — syncing there")
+                                append(". Switch team to see it.")
+                                m.warning?.let { append("\n").append(it) }
+                            }
+                            android.widget.Toast.makeText(
+                                context, msg, android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                            actionBusy = false
+                            // It left this team: back to the list.
+                            onDeleted()
+                            return@launch
+                        }
+                        is SessionApi.Result.HttpError ->
+                            actionMsg = "Could not move: ${r.code} ${r.message}"
+                        is SessionApi.Result.NetworkError ->
+                            actionMsg = "Network error: ${r.cause.message}"
+                    }
+                    actionBusy = false
+                }
+            }
+            AlertDialog(
+                onDismissRequest = { showMoveDialog = false },
+                title = { Text("Move to another team") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        otherTeams.forEach { team ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = target == team.id,
+                                    onClick = { target = team.id },
+                                )
+                                Text(team.label.ifBlank { team.id })
+                            }
+                        }
+                        if (synced) {
+                            Text(
+                                "It was synced to $fromName's git repo — that copy " +
+                                    "stays there. Remove it from the repo by hand.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Text(
+                            "Voiceprints already learned from it stay in $fromName.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    Row {
+                        TextButton(
+                            onClick = { doMove(sync = false) },
+                            enabled = !actionBusy && target != null,
+                        ) { Text("Move") }
+                        TextButton(
+                            onClick = { doMove(sync = true) },
+                            enabled = !actionBusy && target != null,
+                        ) { Text("Move & sync") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showMoveDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
+
         // Delete-confirmation dialog (vezir server >= 0.8.12).
         if (showDeleteDialog) {
             AlertDialog(
@@ -683,6 +781,19 @@ fun SessionDetailScreen(
                                 refresh()
                                 actionBusy = false
                             }
+                        },
+                    )
+                }
+                // Move to team (v0.15.0; server >= 0.26.0).  Not while the
+                // server is processing it (it would answer 409 anyway).
+                if (otherTeams.isNotEmpty() && mayMove &&
+                    s.status !in setOf("transcribing", "summarizing", "syncing")
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Move to team\u2026") },
+                        onClick = {
+                            menuExpanded = false
+                            showMoveDialog = true
                         },
                     )
                 }

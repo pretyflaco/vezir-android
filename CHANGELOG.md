@@ -6,6 +6,46 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.15.0 — the team belongs to the recording; move a session to another team
+
+Mirrors vezir 0.25/0.26 (desktop).  Incident 2026-10-02: a meeting recorded
+under the wrong team had no clean way out, and the same could happen here —
+the upload went to whichever team was **active when the upload ran**, and
+the header's team switcher stayed live while recording, so switching teams
+mid-recording (or before a WorkManager retry) silently sent the meeting to
+the other team.  "Move to team" needs **server ≥ 0.26.0**; everything else
+works with any server.
+
+### Changed
+
+- **The destination team is pinned when recording starts.**  The Record
+  screen shows *This recording uploads to <team> ▾* under the title; change
+  it deliberately while recording, paused or finished.  Switching the app's
+  team in the header no longer moves a recording — a toast says where it
+  still goes.  While idle the row shows the active team and choosing one
+  switches it, as before.
+- **"Upload to <team>"** on a finished recording names the destination, and
+  the upload uses that team's credentials end to end (the worker, the
+  resumable-upload resume key, status polling, the label / session / artifact
+  screens reached from the upload).  If that team is no longer enrolled the
+  upload fails loudly instead of falling back to the active team.  Imports are
+  pinned to the team they were started in.
+- **"Dismiss" is now "Keep on phone"** and says where the file stays and how
+  to upload it later (Settings → Import recording).  It always kept the
+  file; the old label read like it threw it away.
+- A token refresh now rotates the login that actually expired (the pinned
+  team's), not always the active team's.
+
+### Added
+
+- **Session detail → Actions → Move to team…** (server ≥ 0.26.0): pick one of
+  your other teams, then **Move** or **Move & sync**.  Uploader or admin only
+  (the server enforces it); refused while the server is still processing the
+  session.  A copy already synced to the old team's git repo **stays there** —
+  the dialog says so; remove it from that repo by hand.  Voiceprints learned
+  from the session stay with the old team.  Against an older server the app
+  explains that the server needs upgrading.
+
 ## 0.14.0 — summary attestation; preset picker retired
 
 Needs **server ≥ 0.20.0** for the attestation display (older servers send

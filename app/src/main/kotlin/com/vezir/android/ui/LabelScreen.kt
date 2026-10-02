@@ -71,10 +71,13 @@ fun LabelScreen(
     sessionId: String,
     onDone: () -> Unit,
     onCancel: () -> Unit,
+    /** The session's team when it isn't the active one (v0.15.0). */
+    teamId: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val cred = remember(prefs.activeTeamId) { prefs.activeCredential() }
+    // v0.15.0: a session uploaded to a non-active team opens in ITS team.
+    val cred = remember(prefs.activeTeamId, teamId) { prefs.credentialFor(teamId) }
 
     if (cred == null) {
         onCancel()
