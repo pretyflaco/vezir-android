@@ -6,6 +6,39 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.15.1 — pin vezir.twentyone.ist to Let's Encrypt
+
+On 2026-10-20 the private keys of eight eMudhra intermediate CAs were found
+to be recoverable from their certificates
+(<https://emudhra.we-have-a-problem.com/>).  They chain to roots in
+Android's system store.  Browsers block them via their own revocation feeds;
+apps don't consume those, and Android 10–13 only update the root store with
+an OS update — so anyone holding a key could have impersonated the server
+to the app.
+
+### Security
+
+- **`vezir.twentyone.ist` is pinned to the four ISRG (Let's Encrypt) root
+  keys** — X1, X2, YE, YR — in `network_security_config.xml`.  A chain that
+  doesn't run through one of them is refused, whatever the device's root
+  store says.  All four are pinned so Let's Encrypt can move issuance
+  between hierarchies without an app update.  The pins expire on
+  2027-10-21 and then fail *open* (system trust, as before) rather than
+  lock out an app nobody updated.  Self-hosted servers on other domains are
+  unaffected.
+
+### Fixed
+
+- **Custom-CA trust kept the system check hostname-aware.**  For servers
+  enrolled with a custom CA, the composite trust manager wrapped the
+  system one as a plain `X509TrustManager`, i.e. the hostname-less check.
+  Android refuses that call once the network config has a per-domain
+  section, which would have failed every public host for those users and
+  skipped the pins.  It now forwards the socket/engine (hostname-aware)
+  checks.  4 new tests.
+
+Needs any server.  Suite: 148.
+
 ## 0.15.0 — the team belongs to the recording; move a session to another team
 
 Mirrors vezir 0.25/0.26 (desktop).  Incident 2026-10-02: a meeting recorded

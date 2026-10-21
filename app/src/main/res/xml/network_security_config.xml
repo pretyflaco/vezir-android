@@ -8,6 +8,25 @@
 
   The cleartext allow-list for muscle's Tailscale/nvpn IPs was removed
   in 0.1.6 because the server no longer accepts HTTP on port 8000.
+
+  v0.15.1: vezir.twentyone.ist is pinned to Let's Encrypt's roots.  On
+  2026-10-20 the private keys of eight eMudhra intermediates (chaining to
+  roots in Android's system store) were found to be recoverable; Android
+  apps don't consume Chrome's CRLSets and Android 10-13 only update the
+  store with an OS update, so without a pin anyone holding a key could
+  impersonate the server.  Android checks the pins against the chain it
+  validates, so a match on ANY certificate in it is enough.  All four ISRG
+  root keys are pinned so issuance can move between hierarchies (today:
+  leaf <- YE2 <- Root YE <- ISRG Root X2 <- ISRG Root X1) without an app
+  update.  Hashes = base64(SHA-256(SubjectPublicKeyInfo)), computed from
+  letsencrypt.org/certs and cross-checked against the live chain:
+
+    openssl x509 -in CERT.pem -noout -pubkey \
+      | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+
+  `expiration` makes the pins fail OPEN after that date rather than brick
+  an app nobody updated; re-check and extend it before then.  Self-hosted
+  servers on other domains are unaffected (system trust, as before).
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
@@ -15,4 +34,20 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">vezir.twentyone.ist</domain>
+        <pin-set expiration="2027-10-21">
+            <!-- ISRG Root X1 (RSA 4096) -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+            <!-- ISRG Root X2 (ECDSA P-384) -->
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+            <!-- ISRG Root YE (ECDSA P-384, gen-y) -->
+            <pin digest="SHA-256">sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=</pin>
+            <!-- ISRG Root YR (RSA 4096, gen-y) -->
+            <pin digest="SHA-256">fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</pin>
+        </pin-set>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config>

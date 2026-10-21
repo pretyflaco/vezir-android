@@ -3,13 +3,16 @@ package com.vezir.android.net
 import android.util.Log
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
+import java.net.Socket
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLEngine
 import javax.net.ssl.TrustManager
 import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509ExtendedTrustManager
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -80,27 +83,60 @@ object CaTrustManager {
  * Tries each delegate [X509TrustManager] in order. Throws only if ALL
  * delegates reject the certificate chain. This is the standard OkHttp
  * pattern for combining system + custom CAs.
+ *
+ * Extends [X509ExtendedTrustManager] and forwards the hostname-aware
+ * (socket / engine) calls (v0.15.1).  Android's system trust manager
+ * throws on the hostname-less `checkServerTrusted(chain, authType)` as soon
+ * as network_security_config.xml has a `<domain-config>`, and it needs the
+ * hostname to enforce the vezir.twentyone.ist `<pin-set>`.  A plain
+ * [X509TrustManager] wrapper would make TLS lean entirely on the custom CA
+ * (failing every public host) and skip the pins.
  */
-private class CompositeTrustManager(
+internal class CompositeTrustManager(
     private val delegates: List<X509TrustManager>,
-) : X509TrustManager {
+) : X509ExtendedTrustManager() {
 
-    override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) {
+    private inline fun firstAccepting(check: (X509TrustManager) -> Unit) {
         var lastEx: CertificateException? = null
         for (tm in delegates) {
-            try { tm.checkClientTrusted(chain, authType); return }
+            try { check(tm); return }
             catch (e: CertificateException) { lastEx = e }
         }
         throw lastEx ?: CertificateException("no trust managers configured")
     }
 
-    override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
-        var lastEx: CertificateException? = null
-        for (tm in delegates) {
-            try { tm.checkServerTrusted(chain, authType); return }
-            catch (e: CertificateException) { lastEx = e }
-        }
-        throw lastEx ?: CertificateException("no trust managers configured")
+    override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) =
+        firstAccepting { it.checkClientTrusted(chain, authType) }
+
+    override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) =
+        firstAccepting { it.checkServerTrusted(chain, authType) }
+
+    override fun checkClientTrusted(
+        chain: Array<out X509Certificate>, authType: String, socket: Socket?,
+    ) = firstAccepting {
+        if (it is X509ExtendedTrustManager) it.checkClientTrusted(chain, authType, socket)
+        else it.checkClientTrusted(chain, authType)
+    }
+
+    override fun checkServerTrusted(
+        chain: Array<out X509Certificate>, authType: String, socket: Socket?,
+    ) = firstAccepting {
+        if (it is X509ExtendedTrustManager) it.checkServerTrusted(chain, authType, socket)
+        else it.checkServerTrusted(chain, authType)
+    }
+
+    override fun checkClientTrusted(
+        chain: Array<out X509Certificate>, authType: String, engine: SSLEngine?,
+    ) = firstAccepting {
+        if (it is X509ExtendedTrustManager) it.checkClientTrusted(chain, authType, engine)
+        else it.checkClientTrusted(chain, authType)
+    }
+
+    override fun checkServerTrusted(
+        chain: Array<out X509Certificate>, authType: String, engine: SSLEngine?,
+    ) = firstAccepting {
+        if (it is X509ExtendedTrustManager) it.checkServerTrusted(chain, authType, engine)
+        else it.checkServerTrusted(chain, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> =
