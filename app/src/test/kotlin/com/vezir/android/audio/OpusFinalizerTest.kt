@@ -1,5 +1,7 @@
 package com.vezir.android.audio
 
+import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.net.TestUri
@@ -14,6 +16,7 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -136,9 +139,47 @@ class OpusFinalizerTest {
     }
 
     @Test
-    fun openExistingReusesFileTargetAndDisplayPath() {
+    fun throwingFinalizePreservesJournalAndDoesNotComplete() {
+        val journal = temp.newFile("throwing-finalize.vzj")
+        OpusJournal(journal, OpusJournal.Metadata("throwing.ogg", serial = 6)).close()
+        val failure = RuntimeException("injected resolver failure")
+        val resolver = FakeContentResolver().apply { updateFailure = failure }
+        val finalizer = OpusFinalizer(journal)
+
+        try {
+            finalizer.finalize(ResolverContext(resolver), mediaTarget("throwing.ogg"))
+            fail("RuntimeException expected")
+        } catch (caught: RuntimeException) {
+            assertTrue(caught === failure)
+        }
+
+        assertTrue(journal.exists())
+        assertTrue(finalizer.tempFile.exists())
+        assertFalse(finalizer.completionFile.exists())
+    }
+
+    @Test
+    fun zeroUpdateFinalizePreservesJournalAndDoesNotComplete() {
+        val journal = temp.newFile("zero-finalize.vzj")
+        OpusJournal(journal, OpusJournal.Metadata("zero.ogg", serial = 7)).close()
+        val resolver = FakeContentResolver().apply { updateResult = 0 }
+        val finalizer = OpusFinalizer(journal)
+
+        try {
+            finalizer.finalize(ResolverContext(resolver), mediaTarget("zero.ogg"))
+            fail("IOException expected")
+        } catch (_: IOException) {
+        }
+
+        assertTrue(journal.exists())
+        assertTrue(finalizer.tempFile.exists())
+        assertFalse(finalizer.completionFile.exists())
+    }
+
+    @Test
+    fun openExistingRewritesShorterDataOverLongerFile() {
         val output = temp.newFile("existing.ogg")
-        output.writeBytes(ByteArray(20))
+        output.writeBytes(ByteArray(20) { 9 })
         val uri = TestUri("file://${output.absolutePath}")
         val displayPath = "Music/Vezir/existing.ogg"
 
@@ -157,6 +198,22 @@ class OpusFinalizerTest {
         assertArrayEquals(byteArrayOf(1, 2, 3), output.readBytes())
     }
 
+    @Test
+    fun openExistingRequestsTruncatingProviderMode() {
+        val resolver = FakeContentResolver()
+
+        val opened = RecordingStorage.openExisting(
+            ResolverContext(resolver),
+            TestUri("content://test/recording"),
+            "existing.ogg",
+            "Music/Vezir/existing.ogg",
+            RecordingStorage.MIME_OGG,
+        )
+        opened.output.close()
+
+        assertEquals("wt", resolver.openMode)
+    }
+
     private fun fileTarget(file: File, displayName: String): RecordingStorage.RecordingTarget =
         target(
             CountingOutputStream(FileOutputStream(file)),
@@ -164,17 +221,24 @@ class OpusFinalizerTest {
             TestUri("file://${file.absolutePath}"),
         )
 
+    private fun mediaTarget(displayName: String): RecordingStorage.RecordingTarget = target(
+        CountingOutputStream(ByteArrayOutputStream()),
+        displayName,
+        pendingMediaStore = true,
+    )
+
     private fun target(
         output: CountingOutputStream,
         displayName: String,
         uri: Uri = TestUri("content://test/recording"),
+        pendingMediaStore: Boolean = false,
     ): RecordingStorage.RecordingTarget = RecordingStorage.RecordingTarget(
         output = output,
         uri = uri,
         displayPath = "Music/Vezir/$displayName",
         displayName = displayName,
         mimeType = RecordingStorage.MIME_OGG,
-        pendingValues = null,
+        pendingValues = if (pendingMediaStore) RecordingStorage.PendingMediaStoreValues() else null,
     )
 
     private fun testContext(): Context = uninitialized(ContextWrapper::class.java)
@@ -186,6 +250,33 @@ class OpusFinalizerTest {
         val unsafe = field.get(null)
         @Suppress("UNCHECKED_CAST")
         return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, type) as T
+    }
+
+    private class ResolverContext(
+        private val resolver: ContentResolver,
+    ) : ContextWrapper(null) {
+        override fun getContentResolver(): ContentResolver = resolver
+    }
+
+    private class FakeContentResolver : ContentResolver(null) {
+        var updateResult: Int = 1
+        var updateFailure: RuntimeException? = null
+        var openMode: String? = null
+
+        override fun update(
+            uri: Uri,
+            values: ContentValues,
+            where: String?,
+            selectionArgs: Array<String>?,
+        ): Int {
+            updateFailure?.let { throw it }
+            return updateResult
+        }
+
+        override fun openOutputStream(uri: Uri, mode: String): OutputStream {
+            openMode = mode
+            return ByteArrayOutputStream()
+        }
     }
 
     private data class Page(

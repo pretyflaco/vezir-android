@@ -1,13 +1,10 @@
 package com.vezir.android
 
 import android.app.Application
-import android.net.Uri
 import android.util.Log
 import com.vezir.android.audio.OpusFinalizer
-import com.vezir.android.audio.OpusJournal
 import com.vezir.android.capture.CaptureController
 import com.vezir.android.capture.CaptureService
-import com.vezir.android.capture.RecordingStorage
 import com.vezir.android.net.LabelCheckWorker
 import java.io.File
 
@@ -21,7 +18,7 @@ class VezirApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CaptureService.ensureNotificationChannel(this)
-        recoverInterruptedRecordings()
+        Thread(Runnable { recoverInterruptedRecordings() }, "vezir-recovery").start()
         LabelCheckWorker.enqueue(this)
     }
 
@@ -31,19 +28,12 @@ class VezirApp : Application() {
             val finalizer = OpusFinalizer(journalFile)
             if (finalizer.completionFile.isFile) {
                 journalFile.delete()
+                finalizer.tempFile.delete()
+                File(finalizer.completionFile.path + ".tmp").delete()
                 return@forEach
             }
             try {
-                val metadata = OpusJournal.read(journalFile).metadata
-                val uri = metadata.targetUri ?: error("journal has no target URI")
-                val target = RecordingStorage.openExisting(
-                    this,
-                    Uri.parse(uri),
-                    metadata.displayName,
-                    metadata.displayPath ?: "Music/Vezir/${metadata.displayName}",
-                    RecordingStorage.MIME_OGG,
-                )
-                val result = finalizer.recover(this, target)
+                val result = finalizer.recover(this)
                 CaptureController.update {
                     it.copy(
                         state = CaptureController.State.FINISHED,

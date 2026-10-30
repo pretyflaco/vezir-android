@@ -429,8 +429,7 @@ fun RecordScreen(
                 "No direct playback capture — audio may still be captured via mic"
             else -> null
         }
-        if (showCaptureWarnings && silenceWarning != null &&
-            (terminal || !silenceWarningDismissed)) {
+        if (showCaptureWarnings && silenceWarning != null && !silenceWarningDismissed) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),

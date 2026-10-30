@@ -39,6 +39,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
@@ -241,7 +242,8 @@ class CaptureService : Service() {
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO is requested by the UI before start
     private fun runCapture(projection: MediaProjection, title: String?) {
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
+            "-" + UUID.randomUUID().toString().take(8)
         val displayName = "vezir-$stamp.ogg"
         val target = RecordingStorage.create(this, displayName)
         try {
@@ -249,6 +251,11 @@ class CaptureService : Service() {
         } catch (t: Throwable) {
             // Keep the pending target and journal so VezirApp can recover them.
             // Pending MediaStore entries stay invisible until finalized.
+            try {
+                target.output.close()
+            } catch (cleanup: Throwable) {
+                if (cleanup !== t) t.addSuppressed(cleanup)
+            }
             throw t
         }
     }
@@ -285,6 +292,18 @@ class CaptureService : Service() {
             .setAudioPlaybackCaptureConfig(playbackConfig)
             .build()
 
+        try {
+            runCaptureWithPlayback(playbackRecord, target)
+        } finally {
+            runCatching { playbackRecord.stop() }
+            runCatching { playbackRecord.release() }
+        }
+    }
+
+    private fun runCaptureWithPlayback(
+        playbackRecord: AudioRecord,
+        target: RecordingStorage.RecordingTarget,
+    ) {
         // ── mic capture ──
         val micFormat = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -299,10 +318,28 @@ class CaptureService : Service() {
         val micRecord = newMicRecord(micFormat, micBufferBytes)
         val micRecordingCallback = micRecord?.let(::registerMicDiagnostics)
 
+        try {
+            runCaptureWithMic(playbackRecord, micRecord, target)
+        } finally {
+            micRecordingCallback?.let { callback ->
+                micRecord?.let { record ->
+                    runCatching { record.unregisterAudioRecordingCallback(callback) }
+                }
+            }
+            runCatching { micRecord?.stop() }
+            runCatching { micRecord?.release() }
+        }
+    }
+
+    private fun runCaptureWithMic(
+        playbackRecord: AudioRecord,
+        micRecord: AudioRecord?,
+        target: RecordingStorage.RecordingTarget,
+    ) {
         val playbackResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 2)
         val micResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 1)
         val journalFile = File(filesDir, "recordings/${target.displayName}.journal")
-        val journal = OpusJournal(
+        OpusJournal(
             journalFile,
             OpusJournal.Metadata(
                 displayName = target.displayName,
@@ -310,42 +347,70 @@ class CaptureService : Service() {
                 targetUri = target.uri.toString(),
                 displayPath = target.displayPath,
             ),
-        )
-        val encoder = OpusEncoder(target.output, sampleRate = OUTPUT_SAMPLE_RATE, channels = 1, journal = journal)
-
-        val maxMs = BuildConfig.MAX_RECORDING_MILLIS
-        val readChunkFrames = INPUT_SAMPLE_RATE / 50          // 20 ms
-        val playbackBuf = ShortArray(readChunkFrames * 2)
-        val micBuf = ShortArray(readChunkFrames)
-        // Output buffers are the resampled 16 kHz mono. 20 ms in -> ~6.66 ms out
-        // factor; size with slack for ratio rounding.
-        val outResamplePlayback = ShortArray(readChunkFrames + 16)
-        val outResampleMic = ShortArray(readChunkFrames + 16)
-        val mixBuf = ShortArray(readChunkFrames + 16)
-
-        playbackRecord.startRecording()
-
-        val startElapsed = SystemClock.elapsedRealtime()
-        var lastNotifMs = -1L
-                var lastLevelMs = -1L
-        val playbackSilence = SilenceWindow()
-        val micSilence = SilenceWindow()
-        var totalPausedMs = 0L
-        var pauseStartMs = 0L
-
-        CaptureController.update {
-            it.copy(
-                state = CaptureController.State.RECORDING,
-                outputUri = target.uri,
-                displayName = target.displayName,
-                displayPath = target.displayPath,
-                errorMessage = null,
-                micSilent = micRecord == null || micClientSilenced,
-                stopReason = stopReason,
+        ).use { journal ->
+            val encoder = OpusEncoder(
+                target.output,
+                sampleRate = OUTPUT_SAMPLE_RATE,
+                channels = 1,
+                journal = journal,
+            )
+            runCaptureWithEncoder(
+                playbackRecord,
+                micRecord,
+                target,
+                playbackResampler,
+                micResampler,
+                journalFile,
+                journal,
+                encoder,
             )
         }
+    }
 
+    @SuppressLint("MissingPermission")
+    private fun runCaptureWithEncoder(
+        playbackRecord: AudioRecord,
+        micRecord: AudioRecord?,
+        target: RecordingStorage.RecordingTarget,
+        playbackResampler: PcmResampler,
+        micResampler: PcmResampler,
+        journalFile: File,
+        journal: OpusJournal,
+        encoder: OpusEncoder,
+    ) {
+        val playbackSilence = SilenceWindow()
+        val micSilence = SilenceWindow()
         try {
+            val maxMs = BuildConfig.MAX_RECORDING_MILLIS
+            val readChunkFrames = INPUT_SAMPLE_RATE / 50          // 20 ms
+            val playbackBuf = ShortArray(readChunkFrames * 2)
+            val micBuf = ShortArray(readChunkFrames)
+            // Output buffers are the resampled 16 kHz mono. 20 ms in -> ~6.66 ms out
+            // factor; size with slack for ratio rounding.
+            val outResamplePlayback = ShortArray(readChunkFrames + 16)
+            val outResampleMic = ShortArray(readChunkFrames + 16)
+            val mixBuf = ShortArray(readChunkFrames + 16)
+
+            playbackRecord.startRecording()
+
+            val startElapsed = SystemClock.elapsedRealtime()
+            var lastNotifMs = -1L
+            var lastLevelMs = -1L
+            var totalPausedMs = 0L
+            var pauseStartMs = 0L
+
+            CaptureController.update {
+                it.copy(
+                    state = CaptureController.State.RECORDING,
+                    outputUri = target.uri,
+                    displayName = target.displayName,
+                    displayPath = target.displayPath,
+                    errorMessage = null,
+                    micSilent = micRecord == null || micClientSilenced,
+                    stopReason = stopReason,
+                )
+            }
+
             while (!stopRequested) {
                 val now = SystemClock.elapsedRealtime()
                 val elapsedMs = now - startElapsed
@@ -487,32 +552,28 @@ class CaptureService : Service() {
                 }
             }
         } finally {
-            CaptureController.update { it.copy(state = CaptureController.State.STOPPING) }
-            micRecordingCallback?.let { callback ->
-                micRecord?.let { record ->
-                    runCatching { record.unregisterAudioRecordingCallback(callback) }
-                }
+            try {
+                CaptureController.update { it.copy(state = CaptureController.State.STOPPING) }
+            } finally {
+                runCatching { playbackRecord.stop() }
+                runCatching { micRecord?.stop() }
+                encoder.stopAndClose()
             }
-            runCatching { playbackRecord.stop() }
-            runCatching { micRecord?.stop() }
-            runCatching { playbackRecord.release() }
-            runCatching { micRecord?.release() }
-            runCatching { encoder.stopAndClose() }
-            val result = OpusFinalizer(journalFile).finalize(this, target)
+        }
 
-            val endBytes = result.bytesWritten
-            CaptureController.update {
-                it.copy(
-                    state = CaptureController.State.FINISHED,
-                    bytesWritten = endBytes,
-                    outputUri = target.uri,
-                    displayName = target.displayName,
-                    displayPath = target.displayPath,
-                    playbackSilent = playbackSilence.silent,
-                    micSilent = micRecord == null || micClientSilenced || micSilence.silent,
-                    stopReason = stopReason,
-                )
-            }
+        val result = OpusFinalizer(journalFile).finalize(this, target)
+        val endBytes = result.bytesWritten
+        CaptureController.update {
+            it.copy(
+                state = CaptureController.State.FINISHED,
+                bytesWritten = endBytes,
+                outputUri = target.uri,
+                displayName = target.displayName,
+                displayPath = target.displayPath,
+                playbackSilent = playbackSilence.silent,
+                micSilent = micRecord == null || micClientSilenced || micSilence.silent,
+                stopReason = stopReason,
+            )
         }
     }
 

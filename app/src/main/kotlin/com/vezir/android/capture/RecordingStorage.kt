@@ -10,6 +10,7 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FilterOutputStream
+import java.io.IOException
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicLong
 
@@ -81,18 +82,15 @@ object RecordingStorage {
         /**
          * Mark the recording finished. On MediaStore-backed targets this
          * clears the pending flag so the audio appears in galleries.
-         * No-op on the fallback path. Idempotent.
+         * No-op on the fallback path. Provider failures are propagated.
          */
         fun finalize(context: Context) {
             val pv = pendingValues ?: return
-            try {
-                val cv = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                }
-                context.contentResolver.update(uri, cv, null, null)
-            } catch (e: Exception) {
-                Log.w(TAG, "MediaStore finalize failed for $uri", e)
+            val cv = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
             }
+            val updated = context.contentResolver.update(uri, cv, null, null)
+            if (updated == 0) throw IOException("MediaStore finalize did not update $uri")
         }
 
         /** Best-effort delete on failure paths. */
@@ -166,7 +164,7 @@ object RecordingStorage {
         val out = if (isFile) {
             FileOutputStream(File(uri.path ?: error("file URI has no path")), false)
         } else {
-            context.contentResolver.openOutputStream(uri, "w")
+            context.contentResolver.openOutputStream(uri, "wt")
                 ?: error("openOutputStream returned null for $uri")
         }
         return RecordingTarget(

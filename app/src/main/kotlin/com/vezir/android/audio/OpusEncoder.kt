@@ -3,7 +3,6 @@ package com.vezir.android.audio
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import android.util.Log
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import kotlin.random.Random
@@ -52,31 +51,58 @@ class OpusEncoder(
     private var idHeaderEmitted = false
     private var tagsHeaderEmitted = false
     private var stopped = false
+    private var codecStopped = false
+    private var codecReleased = false
+    private var outputClosed = false
+    private var journalClosed = false
+    private var stopFailure: Throwable? = null
 
     init {
-        require(channels == 1) { "v1 emits mono only" }
-        require(sampleRate == 16_000) { "v1 emits 16 kHz only" }
+        var createdCodec: MediaCodec? = null
+        try {
+            require(channels == 1) { "v1 emits mono only" }
+            require(sampleRate == 16_000) { "v1 emits 16 kHz only" }
 
-        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, sampleRate, channels).apply {
-            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
-            // CSD-0 is filled by the encoder. Some devices need an explicit
-            // max-input-size to avoid "buffer too small" exceptions on
-            // larger feeds; we keep our feeds at exactly one frame so
-            // KEY_MAX_INPUT_SIZE is just frameBytes.
-            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, frameBytes)
-            // Some encoders honour KEY_AAC_PROFILE-style hints; not needed for Opus.
+            val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, sampleRate, channels).apply {
+                setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
+                // CSD-0 is filled by the encoder. Some devices need an explicit
+                // max-input-size to avoid "buffer too small" exceptions on
+                // larger feeds; we keep our feeds at exactly one frame so
+                // KEY_MAX_INPUT_SIZE is just frameBytes.
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, frameBytes)
+                // Some encoders honour KEY_AAC_PROFILE-style hints; not needed for Opus.
+            }
+
+            val newCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
+            createdCodec = newCodec
+            codec = newCodec
+            newCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            newCodec.start()
+
+            // Emit headers immediately so the file is a valid Ogg/Opus from
+            // byte 0 even if no audio frames arrive (defensive).
+            ogg?.writeIdHeader()
+            idHeaderEmitted = true
+            ogg?.writeTagsHeader(vendor = "vezir-android")
+            tagsHeaderEmitted = true
+        } catch (t: Throwable) {
+            try {
+                createdCodec?.release()
+            } catch (cleanup: Throwable) {
+                t.addSuppressedFailure(cleanup)
+            }
+            try {
+                if (ogg != null) ogg.close() else output.close()
+            } catch (cleanup: Throwable) {
+                t.addSuppressedFailure(cleanup)
+            }
+            try {
+                journal?.close()
+            } catch (cleanup: Throwable) {
+                t.addSuppressedFailure(cleanup)
+            }
+            throw t
         }
-
-        codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        codec.start()
-
-        // Emit headers immediately so the file is a valid Ogg/Opus from
-        // byte 0 even if no audio frames arrive (defensive).
-        ogg?.writeIdHeader()
-        idHeaderEmitted = true
-        ogg?.writeTagsHeader(vendor = "vezir-android")
-        tagsHeaderEmitted = true
     }
 
     /**
@@ -109,32 +135,60 @@ class OpusEncoder(
      * we don't lose its lead-in.
      */
     fun stopAndClose() {
-        if (stopped) return
-        stopped = true
-
-        if (frameFill > 0) {
-            // Zero-pad to a full frame.
-            for (i in frameFill until frameBytes) frameBuffer[i] = 0
-            submitFrame(frameBuffer, frameBytes, endOfStream = true)
-            frameFill = 0
-        } else {
-            submitFrame(frameBuffer, 0, endOfStream = true)
+        var failure = stopFailure
+        fun attempt(block: () -> Unit) {
+            try {
+                block()
+            } catch (t: Throwable) {
+                val current = failure
+                if (current == null) failure = t else current.addSuppressedFailure(t)
+            }
         }
 
-        // Drain remaining output until EOS.
-        drain(untilEos = true)
+        if (!stopped) {
+            stopped = true
+            attempt {
+                if (frameFill > 0) {
+                    // Zero-pad to a full frame.
+                    for (i in frameFill until frameBytes) frameBuffer[i] = 0
+                    submitFrame(frameBuffer, frameBytes, endOfStream = true)
+                    frameFill = 0
+                } else {
+                    submitFrame(frameBuffer, 0, endOfStream = true)
+                }
 
-        try {
-            codec.stop()
-        } catch (e: Exception) {
-            Log.w(TAG, "codec.stop() raised", e)
+                // Drain remaining output until EOS.
+                drain(untilEos = true)
+            }
         }
-        codec.release()
-        try {
-            ogg?.close()
-        } finally {
-            journal?.close()
+
+        if (!codecReleased) {
+            if (!codecStopped) {
+                attempt {
+                    codec.stop()
+                    codecStopped = true
+                }
+            }
+            attempt {
+                codec.release()
+                codecReleased = true
+            }
         }
+        if (!outputClosed && ogg != null) {
+            attempt {
+                ogg.close()
+                outputClosed = true
+            }
+        }
+        if (!journalClosed && journal != null) {
+            attempt {
+                journal.close()
+                journalClosed = true
+            }
+        }
+
+        stopFailure = failure
+        failure?.let { throw it }
     }
 
     // ──────────────────────────── Internals ──────────────────────────
@@ -206,4 +260,8 @@ class OpusEncoder(
             }
         }
     }
+}
+
+private fun Throwable.addSuppressedFailure(failure: Throwable) {
+    if (failure !== this) addSuppressed(failure)
 }
