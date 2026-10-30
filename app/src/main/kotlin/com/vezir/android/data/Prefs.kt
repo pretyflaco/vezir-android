@@ -240,6 +240,16 @@ class Prefs(context: Context) : TeamCredentialBacking {
     fun hasTeamCredentials(): Boolean =
         !teamsJson.isNullOrBlank()
 
+    fun saveLegacyCredentials(url: String, token: String, caPem: String?) {
+        prefs.edit()
+            .putString(KEY_URL, url)
+            .putString(KEY_TOKEN, token)
+            .apply {
+                if (caPem.isNullOrBlank()) remove(KEY_CA_PEM) else putString(KEY_CA_PEM, caPem)
+            }
+            .apply()
+    }
+
     /** Clear legacy single-token keys only (after migration). */
     fun clearLegacyCredentials() {
         prefs.edit()

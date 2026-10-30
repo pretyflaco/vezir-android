@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,14 +42,46 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.vezir.android.data.EnrollmentPayload
+import kotlinx.coroutines.launch
+
+internal class QrExchangeGate {
+    private var latched = false
+    private var inFlight = false
+    private var failed = false
+
+    fun startScannedAttempt(): Boolean {
+        if (latched) return false
+        latched = true
+        inFlight = true
+        return true
+    }
+
+    fun startRetry(): Boolean {
+        if (!latched || inFlight || !failed) return false
+        inFlight = true
+        failed = false
+        return true
+    }
+
+    fun attemptSucceeded() {
+        inFlight = false
+        failed = false
+    }
+
+    fun attemptFailed() {
+        inFlight = false
+        failed = true
+    }
+}
 
 @Composable
 fun QrScanScreen(
-    onScanned: (EnrollmentPayload) -> Unit,
+    onScanned: suspend (EnrollmentPayload) -> String?,
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
 
     var hasPermission by remember {
         mutableStateOf(
@@ -57,7 +90,24 @@ fun QrScanScreen(
         )
     }
     var status by remember { mutableStateOf<String?>(null) }
-    val firedOnce = remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var retryPayload by remember { mutableStateOf<EnrollmentPayload?>(null) }
+    val exchangeGate = remember { QrExchangeGate() }
+
+    fun exchange(payload: EnrollmentPayload) {
+        scope.launch {
+            val error = onScanned(payload)
+            if (error != null) {
+                status = error
+                retryPayload = payload
+                exchangeGate.attemptFailed()
+            } else {
+                retryPayload = null
+                exchangeGate.attemptSucceeded()
+            }
+            busy = false
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -76,8 +126,9 @@ fun QrScanScreen(
         CompactBrandHeader(title = "scan QR")
 
         Text(
-            "Open /admin/enroll on the Vezir server and point the camera at " +
-                "the QR. The token is stored encrypted on this device.",
+            "Run vezir token enroll on the Vezir server and point the camera " +
+                "at its QR. Enrollment codes are exchanged once; only the " +
+                "returned bearer is stored encrypted on this device.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -92,13 +143,19 @@ fun QrScanScreen(
                 CameraPreview(
                     lifecycleOwner = lifecycleOwner,
                     onPayload = { raw ->
-                        if (firedOnce.value) return@CameraPreview
+                        if (busy || retryPayload != null) return@CameraPreview
                         val parsed = EnrollmentPayload.parse(raw)
                         if (parsed == null) {
                             status = "Scanned a QR, but it's not a Vezir enrollment payload."
-                        } else {
-                            firedOnce.value = true
-                            onScanned(parsed)
+                        } else if (exchangeGate.startScannedAttempt()) {
+                            busy = true
+                            retryPayload = null
+                            status = if (parsed.enroll_code == null) {
+                                "Enrollment QR read."
+                            } else {
+                                "Exchanging enrollment code…"
+                            }
+                            exchange(parsed)
                         }
                     },
                     onError = { msg -> status = msg },
@@ -112,11 +169,34 @@ fun QrScanScreen(
         }
 
         if (status != null) {
-            MonoStatus(status!!, color = MaterialTheme.colorScheme.error)
+            MonoStatus(
+                status!!,
+                color = if (busy) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+        }
+
+        if (retryPayload != null) {
+            OutlinedButton(
+                onClick = {
+                    val payload = retryPayload
+                    if (payload != null && exchangeGate.startRetry()) {
+                        busy = true
+                        status = "Exchanging enrollment code…"
+                        exchange(payload)
+                    }
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Retry enrollment") }
         }
 
         OutlinedButton(
             onClick = onCancel,
+            enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Cancel and use manual paste") }
     }

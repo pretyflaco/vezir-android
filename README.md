@@ -21,7 +21,7 @@ labels speakers, and syncs to your team archive. Sign in with **Nostr** or
 
 ## Status
 
-Alpha (**0.14.0**). Sideload only; no Play Store. Full history in
+Alpha (**0.16.0**). Sideload only; no Play Store. Full history in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Sign in
@@ -45,8 +45,10 @@ on the server first (`vezir npub add` / `vezir google add`); you'll then
 auto-discover every team you belong to and can switch between them in a
 dropdown.
 
-> "Advanced: enter a token / scan QR" remains for machine/CI or legacy
-> `vzr_`-token use.
+> "Advanced: enter a token / scan QR" supports single-use enrollment codes
+> from `vezir token enroll` (server ≥ 0.27.0), plus legacy `vzr_`-token QR
+> payloads and manual token entry. Use `vezir token enroll --legacy` with an
+> older server.
 
 ## What it does
 
@@ -66,9 +68,9 @@ dropdown.
 ## Requirements
 
 - Android 10 (API 29)+.
-- A reachable Vezir server. **≥ 0.20.0** for everything in this README
-  (attestation display); ≥ 0.18.0 for video upload and the iteration-plan
-  template; ≥ 0.8.0 is the bare floor for Nostr/Google sign-in.
+- A reachable Vezir server. **≥ 0.27.0** for single-use QR enrollment;
+  ≥ 0.20.0 for attestation display; ≥ 0.18.0 for video upload and the
+  iteration-plan template; ≥ 0.8.0 is the bare floor for Nostr/Google sign-in.
 - Your identity authorized on the server (`npub` or `@domain` email) and a
   team membership — ask your operator.
 - For Nostr sign-in: a NIP-55 signer app
@@ -81,7 +83,7 @@ dropdown.
 The signed APK is attached to each [GitHub Release](https://github.com/pretyflaco/vezir-android/releases/latest).
 
 ```bash
-adb install -r vezir-android-0.15.0.apk
+adb install -r vezir-android-0.16.0.apk
 ```
 
 Or open the APK in your file manager and allow install from "unknown
@@ -129,8 +131,10 @@ the in-app update check picks up new releases automatically.
 - The session is short-lived (~24h); your Nostr key stays in your
   signer app and never touches the app. Google's client secret stays on
   the server.
-- HTTPS only against the public server cert; an optional internal CA
-  (legacy enrollment) is trusted *in addition to* the public store.
+- HTTPS only against the public server cert; an optional internal CA from
+  enrollment is trusted *in addition to* the public store. Enrollment codes
+  are never saved as bearer tokens; only the bearer returned by the exchange
+  is persisted.
 - Recordings are stored unencrypted in `Music/Vezir/` (audio) and
   `Movies/Vezir/` (screen recordings) — treat the phone's storage
   accordingly. A screen recording is the more sensitive of the two: it

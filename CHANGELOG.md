@@ -6,6 +6,32 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Sideload-only.  APKs are attached to each GitHub release.  Same signing
 keystore since v0.1.0; upgrades install in place.
 
+## 0.16.0 — single-use v3 QR enrollment
+
+### Added
+
+- **V3 enrollment-code exchange.** Camera scans and pasted enrollment JSON now
+  POST the code to `/api/enroll/exchange` before anything is saved or team
+  discovery runs. Only the returned bearer is stored; the code is never used as
+  one. The request has no bearer or team headers and uses the same system/custom
+  CA trust as the rest of the app.
+- **A distinct old-server error.** A 404 from the exchange endpoint explains
+  that the server needs Vezir 0.27.0 or a legacy QR.
+
+### Security
+
+- **No automatic exchange retry after a network failure.** Enrollment codes are
+  single-use, so an ambiguous lost response must not be replayed silently. Ask
+  the operator for a new code if the server consumed it.
+
+### Compatibility
+
+- Legacy v1/v2 bearer payloads and historical v3 bearer + `alt_urls` payloads
+  still work. Payloads must contain exactly one non-blank credential; ambiguous
+  credentials and non-HTTP(S) URLs are rejected.
+
+Suite: 169 (21 new payload, exchange, and enrollment-state tests).
+
 ## 0.15.1 — pin vezir.twentyone.ist to Let's Encrypt
 
 On 2026-10-20 the private keys of eight eMudhra intermediate CAs were found

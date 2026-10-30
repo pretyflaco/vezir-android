@@ -57,6 +57,55 @@ class EnrollmentPayloadTest {
     }
 
     @Test
+    fun parsesV3EnrollmentCode() {
+        val raw = """{"v":3,"url":"https://example.com","enroll_code":"vzre_abc","ca_pem":"pem"}"""
+        val p = EnrollmentPayload.parse(raw)
+        assertNotNull(p)
+        assertEquals("vzre_abc", p!!.enroll_code)
+        assertNull(p.token)
+        assertEquals("pem", p.ca_pem)
+    }
+
+    @Test
+    fun parsesHistoricalV3BearerAndAlternateUrls() {
+        val raw = """{"v":3,"url":"https://example.com","token":"vzr_x","alt_urls":["http://100.64.0.1:8000"]}"""
+        val p = EnrollmentPayload.parse(raw)
+        assertNotNull(p)
+        assertEquals("vzr_x", p!!.token)
+        assertNull(p.enroll_code)
+        assertEquals(listOf("http://100.64.0.1:8000"), p.alt_urls)
+    }
+
+    @Test
+    fun rejectsAmbiguousCredentialShapes() {
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x","token":"vzr_x","enroll_code":"vzre_x"}"""))
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x","token":" ","enroll_code":"vzre_x"}"""))
+    }
+
+    @Test
+    fun rejectsMissingOrBlankV3Credential() {
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x"}"""))
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x","enroll_code":" "}"""))
+    }
+
+    @Test
+    fun rejectsEnrollmentCodeBeforeV3() {
+        assertNull(EnrollmentPayload.parse("""{"v":1,"url":"https://x","enroll_code":"vzre_x"}"""))
+        assertNull(EnrollmentPayload.parse("""{"v":2,"url":"https://x","enroll_code":"vzre_x"}"""))
+    }
+
+    @Test
+    fun rejectsInvalidAlternateUrls() {
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x","token":"vzr_x","alt_urls":["ftp://x"]}"""))
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"https://x","token":"vzr_x","alt_urls":[" "]}"""))
+    }
+
+    @Test
+    fun rejectsMalformedHttpUrl() {
+        assertNull(EnrollmentPayload.parse("""{"v":3,"url":"http://","enroll_code":"vzre_x"}"""))
+    }
+
+    @Test
     fun rejectsGarbage() {
         assertNull(EnrollmentPayload.parse("not json"))
         assertNull(EnrollmentPayload.parse(""))

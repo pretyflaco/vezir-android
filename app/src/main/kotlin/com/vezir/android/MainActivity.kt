@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import android.net.Uri
 import com.vezir.android.data.Prefs
 import com.vezir.android.data.TeamCredentialStore
+import com.vezir.android.net.EnrollmentApi
+import com.vezir.android.net.enrollmentErrorMessage
 import com.vezir.android.ui.ArtifactViewerScreen
 import com.vezir.android.ui.BottomNavBar
 import com.vezir.android.ui.ImportScreen
@@ -345,10 +347,28 @@ private fun AppRoot() {
             )
             Screen.QrScan -> QrScanScreen(
                 onScanned = { payload ->
-                    prefs.serverUrl = payload.url
-                    prefs.token = payload.token
-                    prefs.caPem = payload.ca_pem
-                    pop()  // back to Setup with prefs populated
+                    val code = payload.enroll_code
+                    val legacyToken = payload.token
+                    if (code == null && legacyToken != null) {
+                        prefs.saveLegacyCredentials(payload.url, legacyToken, payload.ca_pem)
+                        pop()
+                        null
+                    } else if (code != null) {
+                        when (val result = EnrollmentApi(payload.url, payload.ca_pem).exchange(code)) {
+                            is EnrollmentApi.Result.Ok -> {
+                                prefs.saveLegacyCredentials(
+                                    payload.url,
+                                    result.data.token,
+                                    result.data.ca_pem ?: payload.ca_pem,
+                                )
+                                pop()
+                                null
+                            }
+                            else -> enrollmentErrorMessage(result)
+                        }
+                    } else {
+                        "The enrollment payload has no usable credential."
+                    }
                 },
                 onCancel = { pop() },
             )

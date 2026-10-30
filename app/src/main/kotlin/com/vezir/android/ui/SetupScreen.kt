@@ -25,7 +25,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vezir.android.data.EnrollmentPayload
 import com.vezir.android.data.Prefs
+import com.vezir.android.net.EnrollmentApi
 import com.vezir.android.net.VezirApi
+import com.vezir.android.net.enrollmentErrorMessage
+import com.vezir.android.net.exchangeAndSaveEnrollment
 import kotlinx.coroutines.launch
 
 /**
@@ -54,6 +57,7 @@ fun SetupScreen(
     var token by remember { mutableStateOf(prefs.token ?: "") }
     var caPem by remember { mutableStateOf(prefs.caPem) }
     var qrJson by remember { mutableStateOf("") }
+    var pendingEnrollmentCode by remember { mutableStateOf<String?>(null) }
     var showManual by remember { mutableStateOf(prefs.serverUrl != null) }
 
     var status by remember { mutableStateOf<String?>(null) }
@@ -69,8 +73,8 @@ fun SetupScreen(
         BrandHeader(subtitle = "set up this device")
 
         Text(
-            "Point this device at your Vezir server. Scan the QR rendered " +
-                "by /admin/enroll, or paste the token your operator issued.",
+            "Run vezir token enroll on your server and scan its QR, or paste " +
+                "enrollment JSON. Legacy bearer tokens are still supported.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -102,7 +106,10 @@ fun SetupScreen(
 
             OutlinedTextField(
                 value = token,
-                onValueChange = { token = it.trim() },
+                onValueChange = {
+                    token = it.trim()
+                    pendingEnrollmentCode = null
+                },
                 label = { Text("Token (vzr_...)") },
                 placeholder = { Text("vzr_...") },
                 singleLine = true,
@@ -114,7 +121,7 @@ fun SetupScreen(
                 value = qrJson,
                 onValueChange = { qrJson = it },
                 label = { Text("Or paste enrollment JSON") },
-                placeholder = { Text("{\"v\":1,\"url\":\"...\",\"token\":\"vzr_...\"}") },
+                placeholder = { Text("{\"v\":3,\"url\":\"...\",\"enroll_code\":\"vzre_...\"}") },
                 singleLine = false,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -122,14 +129,19 @@ fun SetupScreen(
                 onClick = {
                     val parsed = EnrollmentPayload.parse(qrJson)
                     if (parsed == null) {
-                        status = "Could not parse enrollment JSON. " +
-                            "Expected {\"v\":1,\"url\":\"...\",\"token\":\"...\"}."
+                        status = "Could not parse enrollment JSON. Use exactly one " +
+                            "non-blank token or v3 enroll_code and an HTTP(S) URL."
                     } else {
                         url = parsed.url
-                        token = parsed.token
+                        token = parsed.token.orEmpty()
                         caPem = parsed.ca_pem
-                        val extra = if (parsed.ca_pem != null) " (includes CA cert)" else ""
-                        status = "Loaded URL and token from JSON$extra."
+                        pendingEnrollmentCode = parsed.enroll_code
+                        status = if (parsed.enroll_code == null) {
+                            val extra = if (parsed.ca_pem != null) " (includes CA cert)" else ""
+                            "Loaded URL and token from JSON$extra."
+                        } else {
+                            "Enrollment code loaded. Save to exchange and continue."
+                        }
                     }
                 },
                 enabled = qrJson.isNotBlank() && !busy,
@@ -186,13 +198,40 @@ fun SetupScreen(
 
         Button(
             onClick = {
-                prefs.serverUrl = url
-                prefs.token = token
-                prefs.caPem = caPem
-                status = "Saved."
-                onConfigured()
+                scope.launch {
+                    busy = true
+                    status = if (pendingEnrollmentCode == null) {
+                        "Saving…"
+                    } else {
+                        "Exchanging enrollment code…"
+                    }
+                    try {
+                        when (
+                            val result = exchangeAndSaveEnrollment(
+                                url = url,
+                                token = token,
+                                caPem = caPem,
+                                enrollCode = pendingEnrollmentCode,
+                                persist = prefs::saveLegacyCredentials,
+                            )
+                        ) {
+                            is EnrollmentApi.Result.Ok -> {
+                                token = result.data.token
+                                caPem = result.data.ca_pem
+                                pendingEnrollmentCode = null
+                                status = "Saved."
+                                onConfigured()
+                            }
+                            else -> status = enrollmentErrorMessage(result)
+                        }
+                    } finally {
+                        busy = false
+                    }
+                }
             },
-            enabled = url.isNotBlank() && token.isNotBlank() && !busy,
+            enabled = url.isNotBlank() &&
+                (token.isNotBlank() || pendingEnrollmentCode != null) &&
+                !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Save and continue") }
 
