@@ -11,13 +11,17 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,10 +29,13 @@ import com.vezir.android.BuildConfig
 import com.vezir.android.MainActivity
 import com.vezir.android.R
 import com.vezir.android.audio.OpusEncoder
+import com.vezir.android.audio.OpusFinalizer
+import com.vezir.android.audio.OpusJournal
 import com.vezir.android.audio.PcmResampler
 import com.vezir.android.audio.copyClipped
 import com.vezir.android.audio.mixAndClip
 import com.vezir.android.audio.rmsDbfs
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -102,6 +109,8 @@ class CaptureService : Service() {
     private var captureThread: Thread? = null
     @Volatile private var stopRequested: Boolean = false
     @Volatile private var pauseRequested: Boolean = false
+    @Volatile private var stopReason: String? = null
+    @Volatile private var micClientSilenced: Boolean = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -163,22 +172,35 @@ class CaptureService : Service() {
             return
         }
 
+        stopRequested = false
+        stopReason = null
+        micClientSilenced = false
+        val projectionCallback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                Log.w(TAG, "MediaProjection stopped by the system; finalizing capture")
+                requestStop("Screen sharing was revoked; recording stopped. The audio may be incomplete.")
+            }
+        }
+        projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+
         CaptureController.update {
             CaptureController.Snapshot(state = CaptureController.State.STARTING)
         }
-        stopRequested = false
         captureThread = thread(name = "vezir-capture", isDaemon = true) {
             try {
                 runCapture(projection, title)
             } catch (e: Throwable) {
                 Log.e(TAG, "capture thread crashed", e)
+                if (stopReason == null) stopReason = "Capture failed."
                 CaptureController.update {
                     it.copy(
                         state = CaptureController.State.ERROR,
                         errorMessage = e.message ?: e.javaClass.simpleName,
+                        stopReason = stopReason,
                     )
                 }
             } finally {
+                runCatching { projection.unregisterCallback(projectionCallback) }
                 runCatching { projection.stop() }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -187,9 +209,15 @@ class CaptureService : Service() {
     }
 
     private fun handleStop() {
-        stopRequested = true
+        requestStop("Stopped by user.")
         // Capture thread polls stopRequested and exits gracefully; we don't
         // forcibly interrupt or AudioRecord can leave platform state messy.
+    }
+
+    private fun requestStop(reason: String) {
+        if (stopReason == null) stopReason = reason
+        stopRequested = true
+        CaptureController.update { it.copy(stopReason = stopReason) }
     }
 
     private fun handleTogglePause() {
@@ -219,10 +247,8 @@ class CaptureService : Service() {
         try {
             runCaptureWithTarget(projection, title, target)
         } catch (t: Throwable) {
-            // Capture failed before completion; remove the empty/partial
-            // MediaStore (or fallback file) entry rather than leaving a
-            // 0-byte ghost in the user's Music app.
-            runCatching { target.deleteOnError(this) }
+            // Keep the pending target and journal so VezirApp can recover them.
+            // Pending MediaStore entries stay invisible until finalized.
             throw t
         }
     }
@@ -271,10 +297,21 @@ class CaptureService : Service() {
             AudioFormat.ENCODING_PCM_16BIT,
         ).coerceAtLeast(48_000 * 2 / 5)
         val micRecord = newMicRecord(micFormat, micBufferBytes)
+        val micRecordingCallback = micRecord?.let(::registerMicDiagnostics)
 
         val playbackResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 2)
         val micResampler = PcmResampler(INPUT_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, inChannels = 1)
-        val encoder = OpusEncoder(target.output, sampleRate = OUTPUT_SAMPLE_RATE, channels = 1)
+        val journalFile = File(filesDir, "recordings/${target.displayName}.journal")
+        val journal = OpusJournal(
+            journalFile,
+            OpusJournal.Metadata(
+                displayName = target.displayName,
+                serial = target.uri.hashCode(),
+                targetUri = target.uri.toString(),
+                displayPath = target.displayPath,
+            ),
+        )
+        val encoder = OpusEncoder(target.output, sampleRate = OUTPUT_SAMPLE_RATE, channels = 1, journal = journal)
 
         val maxMs = BuildConfig.MAX_RECORDING_MILLIS
         val readChunkFrames = INPUT_SAMPLE_RATE / 50          // 20 ms
@@ -287,13 +324,12 @@ class CaptureService : Service() {
         val mixBuf = ShortArray(readChunkFrames + 16)
 
         playbackRecord.startRecording()
-        micRecord?.startRecording()
 
         val startElapsed = SystemClock.elapsedRealtime()
         var lastNotifMs = -1L
                 var lastLevelMs = -1L
-        var playbackSilentSinceMs: Long = -1L
-        var playbackSilentLatched = false
+        val playbackSilence = SilenceWindow()
+        val micSilence = SilenceWindow()
         var totalPausedMs = 0L
         var pauseStartMs = 0L
 
@@ -304,6 +340,8 @@ class CaptureService : Service() {
                 displayName = target.displayName,
                 displayPath = target.displayPath,
                 errorMessage = null,
+                micSilent = micRecord == null || micClientSilenced,
+                stopReason = stopReason,
             )
         }
 
@@ -329,6 +367,7 @@ class CaptureService : Service() {
                     totalPausedMs + if (pauseStartMs > 0L) now - pauseStartMs else 0L
                 if (elapsedMs - pausedSoFarMs >= maxMs) {
                     Log.i(TAG, "3h recorded-audio cap reached; stopping")
+                    requestStop("Recording duration limit reached.")
                     break
                 }
 
@@ -340,6 +379,13 @@ class CaptureService : Service() {
                 ) ?: 0
 
                 if (pbRead < 0 || mcRead < 0) {
+                    Log.e(
+                        TAG,
+                        "audio read failure: pb=$pbRead mc=$mcRead " +
+                            "micState=${micRecord?.recordingState} " +
+                            "micRoute=${micRecord?.routedDevice?.productName}",
+                    )
+                    if (stopRequested) break
                     error("AudioRecord.read negative: pb=$pbRead mc=$mcRead")
                 }
 
@@ -383,14 +429,16 @@ class CaptureService : Service() {
                     CaptureController.updateLevels(pbDb, mcDb)
                 }
 
-                if (pbDb < -60f) {
-                    if (playbackSilentSinceMs < 0) playbackSilentSinceMs = now
-                    if (!playbackSilentLatched && now - playbackSilentSinceMs >= 10_000L) {
-                        playbackSilentLatched = true
-                    }
-                } else {
-                    playbackSilentSinceMs = -1L
-                    playbackSilentLatched = false
+                playbackSilence.update(pbDb, now)
+                val micWasSilent = micSilence.silent
+                micSilence.update(mcDb, now)
+                if (micSilence.silent && !micWasSilent) {
+                    Log.w(
+                        TAG,
+                        "mic silent for 10s: lastRead=$mcRead state=${micRecord?.recordingState} " +
+                            "route=${micRecord?.routedDevice?.productName} " +
+                            "clientSilenced=$micClientSilenced",
+                    )
                 }
 
                 val toEncode: Int
@@ -415,10 +463,11 @@ class CaptureService : Service() {
                 if (toEncode > 0) encoder.feed(mixBuf, toEncode)
 
                 if (now - lastNotifMs >= 1_000L) {
-                    val bytes = target.output.bytesWritten
+                    val bytes = journal.bytesWritten
                     val pdb = pbDb
                     val mdb = mcDb
-                    val silent = playbackSilentLatched
+                    val silent = playbackSilence.silent
+                    val micSilent = micRecord == null || micClientSilenced || micSilence.silent
                     val recMs = elapsedMs - totalPausedMs
                     CaptureController.update {
                         it.copy(
@@ -429,6 +478,8 @@ class CaptureService : Service() {
                             playbackRmsDbfs = pdb,
                             micRmsDbfs = mdb,
                             playbackSilent = silent,
+                            micSilent = micSilent,
+                            stopReason = stopReason,
                         )
                     }
                     notify(buildNotification(recMs.coerceAtLeast(0)))
@@ -437,19 +488,19 @@ class CaptureService : Service() {
             }
         } finally {
             CaptureController.update { it.copy(state = CaptureController.State.STOPPING) }
+            micRecordingCallback?.let { callback ->
+                micRecord?.let { record ->
+                    runCatching { record.unregisterAudioRecordingCallback(callback) }
+                }
+            }
             runCatching { playbackRecord.stop() }
             runCatching { micRecord?.stop() }
             runCatching { playbackRecord.release() }
             runCatching { micRecord?.release() }
-            // encoder.stopAndClose() drains and closes the OutputStream we
-            // got from RecordingStorage; that flushes everything to disk
-            // (or to MediaStore, still IS_PENDING=1).
             runCatching { encoder.stopAndClose() }
-            // Now mark the MediaStore entry visible to the rest of the
-            // system. No-op for the file:// fallback.
-            target.finalize(this)
+            val result = OpusFinalizer(journalFile).finalize(this, target)
 
-            val endBytes = target.output.bytesWritten
+            val endBytes = result.bytesWritten
             CaptureController.update {
                 it.copy(
                     state = CaptureController.State.FINISHED,
@@ -457,6 +508,9 @@ class CaptureService : Service() {
                     outputUri = target.uri,
                     displayName = target.displayName,
                     displayPath = target.displayPath,
+                    playbackSilent = playbackSilence.silent,
+                    micSilent = micRecord == null || micClientSilenced || micSilence.silent,
+                    stopReason = stopReason,
                 )
             }
         }
@@ -482,16 +536,62 @@ class CaptureService : Service() {
                 Log.w(TAG, "mic source $source builder failed: ${e.message}")
                 continue
             }
-            if (rec.state == AudioRecord.STATE_INITIALIZED) {
-                Log.i(TAG, "mic source $source initialised")
-                return rec
-            } else {
+            if (rec.state != AudioRecord.STATE_INITIALIZED) {
                 Log.w(TAG, "mic source $source not initialised; trying next")
                 rec.release()
+                continue
             }
+            try {
+                rec.startRecording()
+            } catch (e: Exception) {
+                Log.w(TAG, "mic source $source start failed: ${e.message}")
+                rec.release()
+                continue
+            }
+            if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                Log.w(
+                    TAG,
+                    "mic source $source not recording after start " +
+                        "(state=${rec.recordingState}); trying next",
+                )
+                rec.release()
+                continue
+            }
+            Log.i(
+                TAG,
+                "mic source $source recording: session=${rec.audioSessionId} " +
+                    "route=${rec.routedDevice?.productName}",
+            )
+            return rec
         }
         Log.w(TAG, "no mic source available; recording playback only")
         return null
+    }
+
+    private fun registerMicDiagnostics(record: AudioRecord): AudioManager.AudioRecordingCallback {
+        val callback = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
+                val config = configs.firstOrNull {
+                    it.clientAudioSessionId == record.audioSessionId
+                } ?: return
+                micClientSilenced = config.isClientSilenced
+                Log.i(
+                    TAG,
+                    "mic recording config: silenced=$micClientSilenced " +
+                        "route=${config.audioDevice?.productName} " +
+                        "routeType=${config.audioDevice?.type}",
+                )
+                if (micClientSilenced) {
+                    CaptureController.update { it.copy(micSilent = true) }
+                }
+            }
+        }
+        try {
+            record.registerAudioRecordingCallback(mainExecutor, callback)
+        } catch (e: Exception) {
+            Log.w(TAG, "mic recording callback registration failed: ${e.message}")
+        }
+        return callback
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -542,5 +642,21 @@ class CaptureService : Service() {
         val m = (totalSec % 3600) / 60
         val s = totalSec % 60
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    }
+}
+
+internal class SilenceWindow(private val durationMs: Long = 10_000L) {
+    var silent: Boolean = false
+        private set
+    private var silentSinceMs: Long = -1L
+
+    fun update(db: Float, nowMs: Long) {
+        if (db < -60f) {
+            if (silentSinceMs < 0L) silentSinceMs = nowMs
+            if (nowMs - silentSinceMs >= durationMs) silent = true
+        } else {
+            silentSinceMs = -1L
+            silent = false
+        }
     }
 }

@@ -30,6 +30,7 @@ class OpusEncoder(
     private val sampleRate: Int = 16_000,
     private val channels: Int = 1,
     bitrate: Int = 24_000,
+    private val journal: OpusJournal? = null,
 ) {
     companion object {
         private const val TAG = "VezirOpusEncoder"
@@ -47,7 +48,7 @@ class OpusEncoder(
 
     private val codec: MediaCodec
     private val bufferInfo = MediaCodec.BufferInfo()
-    private val ogg = OggOpusWriter(output, serial = Random.nextInt())
+    private val ogg = if (journal == null) OggOpusWriter(output, serial = Random.nextInt()) else null
     private var idHeaderEmitted = false
     private var tagsHeaderEmitted = false
     private var stopped = false
@@ -72,9 +73,9 @@ class OpusEncoder(
 
         // Emit headers immediately so the file is a valid Ogg/Opus from
         // byte 0 even if no audio frames arrive (defensive).
-        ogg.writeIdHeader()
+        ogg?.writeIdHeader()
         idHeaderEmitted = true
-        ogg.writeTagsHeader(vendor = "vezir-android")
+        ogg?.writeTagsHeader(vendor = "vezir-android")
         tagsHeaderEmitted = true
     }
 
@@ -129,7 +130,11 @@ class OpusEncoder(
             Log.w(TAG, "codec.stop() raised", e)
         }
         codec.release()
-        ogg.close()
+        try {
+            ogg?.close()
+        } finally {
+            journal?.close()
+        }
     }
 
     // ──────────────────────────── Internals ──────────────────────────
@@ -180,12 +185,20 @@ class OpusEncoder(
                             out.limit(bufferInfo.offset + bufferInfo.size)
                             out.get(packet)
                             granule48k += perFrameGranule
-                            ogg.writeAudioPacket(packet, granule48k)
+                            if (journal != null) {
+                                journal.append(
+                                    packet,
+                                    granule48k,
+                                    eos = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0,
+                                )
+                            } else {
+                                ogg?.writeAudioPacket(packet, granule48k)
+                            }
                         }
                     }
                     codec.releaseOutputBuffer(outIdx, false)
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        ogg.finishWithEos()
+                        ogg?.finishWithEos()
                         return
                     }
                 }

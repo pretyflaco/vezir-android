@@ -155,6 +155,30 @@ object RecordingStorage {
         return createInAppFiles(context, displayName, mimeType)
     }
 
+    fun openExisting(
+        context: Context,
+        uri: Uri,
+        displayName: String,
+        displayPath: String,
+        mimeType: String,
+    ): RecordingTarget {
+        val isFile = uri.scheme == "file"
+        val out = if (isFile) {
+            FileOutputStream(File(uri.path ?: error("file URI has no path")), false)
+        } else {
+            context.contentResolver.openOutputStream(uri, "w")
+                ?: error("openOutputStream returned null for $uri")
+        }
+        return RecordingTarget(
+            output = CountingOutputStream(out),
+            uri = uri,
+            displayPath = displayPath,
+            displayName = displayName,
+            mimeType = mimeType,
+            pendingValues = if (isFile) null else PendingMediaStoreValues(),
+        )
+    }
+
     private fun createViaMediaStore(
         context: Context,
         displayName: String,

@@ -416,13 +416,27 @@ fun RecordScreen(
             }
         }
 
-        if (snapshot.playbackSilent && active && !silenceWarningDismissed) {
+        val terminal = snapshot.state == CaptureController.State.FINISHED ||
+            snapshot.state == CaptureController.State.ERROR
+        val showCaptureWarnings = active || stopping || terminal
+        val silenceWarning = when {
+            snapshot.playbackSilent && snapshot.micSilent ->
+                "No microphone or playback audio detected — the recording may be silent."
+            snapshot.micSilent ->
+                "Microphone unavailable or silent — this may be playback-only, " +
+                    "not a two-sided recording."
+            snapshot.playbackSilent ->
+                "No direct playback capture — audio may still be captured via mic"
+            else -> null
+        }
+        if (showCaptureWarnings && silenceWarning != null &&
+            (terminal || !silenceWarningDismissed)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    "No direct playback capture — audio may still be captured via mic",
+                    silenceWarning,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.weight(1f),
@@ -439,6 +453,13 @@ fun RecordScreen(
                     )
                 }
             }
+        }
+        if (showCaptureWarnings && snapshot.stopReason != null) {
+            Text(
+                snapshot.stopReason!!,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
         if (snapshot.errorMessage != null) {
             Text(

@@ -45,6 +45,9 @@ object CaptureController {
         val playbackRmsDbfs: Float = -90f,
         val micRmsDbfs: Float = -90f,
         val playbackSilent: Boolean = false,  // hint when only mic is audible
+        val micSilent: Boolean = false,
+        val stopReason: String? = null,
+        val recovered: Boolean = false,
         /** True while [ScreenCaptureService] (screen+mic → MP4) owns the
          * session; the UI routes pause/stop to the right service. */
         val isScreenCapture: Boolean = false,

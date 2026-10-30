@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Reliability
+
+- Audio-only capture now stops and finalizes on MediaProjection revocation,
+  reports microphone routing/silence/start failures accurately, and checks each
+  candidate source's actual recording state before use.
+- Opus recordings use a private, versioned packet journal with one shared
+  finalizer for normal stop and startup recovery. Interrupted recordings are
+  recovered into their original MediaStore/file target, finalized atomically,
+  and marked **recovered — review before upload** instead of being discarded or
+  silently uploaded. Recovery is idempotent and preserves partial trailing data
+  only up to the last complete packet.
+- Unit suite: **184 passed**, plus `lintDebug` and `assembleRelease`.
+
 Notable changes per release of the Vezir Android thin client.  Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
