@@ -13,7 +13,7 @@
   and marked **recovered — review before upload** instead of being discarded or
   silently uploaded. Recovery is idempotent and preserves partial trailing data
   only up to the last complete packet.
-- Unit suite: **189 passed**, plus `lintDebug` and `assembleRelease`.
+- Unit suite: **190 passed**, plus `lintDebug` and `assembleRelease`.
 
 Notable changes per release of the Vezir Android thin client.  Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).

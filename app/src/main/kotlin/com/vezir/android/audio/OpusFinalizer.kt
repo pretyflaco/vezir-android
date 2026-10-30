@@ -150,4 +150,16 @@ class OpusFinalizer(private val journalFile: File) {
         val targetUri: String,
         val bytesWritten: Long,
     )
+
+    companion object {
+        /** Remove completed temp files even when their journal was already deleted. */
+        fun cleanupCompletedArtifacts(directory: File) {
+            directory.listFiles { file -> file.name.endsWith(".done") }?.forEach { completion ->
+                val journal = File(completion.path.removeSuffix(".done"))
+                File(journal.path + ".ogg.tmp").delete()
+                File(completion.path + ".tmp").delete()
+                journal.delete()
+            }
+        }
+    }
 }

@@ -214,6 +214,23 @@ class OpusFinalizerTest {
         assertEquals("wt", resolver.openMode)
     }
 
+    @Test
+    fun completedTempArtifactsAreCleanedWithoutJournal() {
+        val dir = temp.newFolder()
+        val done = File(dir, "recording.done")
+        val oggTemp = File(dir, "recording.ogg.tmp")
+        val markerTemp = File(dir, "recording.done.tmp")
+        done.writeText("done")
+        oggTemp.writeBytes(ByteArray(128) { 3 })
+        markerTemp.writeText("tmp")
+
+        OpusFinalizer.cleanupCompletedArtifacts(dir)
+
+        assertTrue(!oggTemp.exists())
+        assertTrue(!markerTemp.exists())
+        assertTrue(done.exists())
+    }
+
     private fun fileTarget(file: File, displayName: String): RecordingStorage.RecordingTarget =
         target(
             CountingOutputStream(FileOutputStream(file)),

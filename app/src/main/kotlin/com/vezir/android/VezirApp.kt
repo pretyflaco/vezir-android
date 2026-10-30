@@ -24,6 +24,7 @@ class VezirApp : Application() {
 
     private fun recoverInterruptedRecordings() {
         val dir = File(filesDir, "recordings")
+        OpusFinalizer.cleanupCompletedArtifacts(dir)
         dir.listFiles { file -> file.name.endsWith(".journal") }?.forEach { journalFile ->
             val finalizer = OpusFinalizer(journalFile)
             if (finalizer.completionFile.isFile) {
