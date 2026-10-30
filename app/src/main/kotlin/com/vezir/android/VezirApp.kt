@@ -34,7 +34,7 @@ class VezirApp : Application() {
             }
             try {
                 val result = finalizer.recover(this)
-                CaptureController.update {
+                CaptureController.updateIfIdle {
                     it.copy(
                         state = CaptureController.State.FINISHED,
                         bytesWritten = result.bytesWritten,

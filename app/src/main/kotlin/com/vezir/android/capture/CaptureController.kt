@@ -62,10 +62,22 @@ object CaptureController {
 
     private val _state = MutableStateFlow(Snapshot())
     val state: StateFlow<Snapshot> = _state.asStateFlow()
+    private val stateLock = Any()
 
     /** Service-side update entry point. */
     fun update(transform: (Snapshot) -> Snapshot) {
-        _state.value = transform(_state.value)
+        synchronized(stateLock) {
+            _state.value = transform(_state.value)
+        }
+    }
+
+    /** Recovery may replace state only while no capture has started. */
+    fun updateIfIdle(transform: (Snapshot) -> Snapshot) {
+        synchronized(stateLock) {
+            if (_state.value.state == State.IDLE) {
+                _state.value = transform(_state.value)
+            }
+        }
     }
 
     /**

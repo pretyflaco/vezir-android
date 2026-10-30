@@ -84,8 +84,8 @@ class OpusFinalizer(private val journalFile: File) {
             )
         } finally {
             if (completed) {
-                journalFile.delete()
                 tempFile.delete()
+                journalFile.delete()
                 markerTempFile.delete()
             }
         }
