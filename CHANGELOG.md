@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.16.1 — capture diagnostics and crash-safe recovery
 
 ### Reliability
 
