@@ -135,18 +135,27 @@ class Prefs(context: Context) : TeamCredentialBacking {
         }
 
     /**
-     * When true, video uploads (.mp4/.mov) request millet's
-     * "iteration-plan" summary template (server >= 0.18.0 +
-     * millet-pipeline >= 0.17.0): timestamped issues/severity/suggested
-     * fixes keyed to cue frames, saved as <base>.iteration-plan.md.
-     * Audio uploads are unaffected (a plan makes no sense for a meeting).
-     * Sticky; default ON — the template is the point of recording a
-     * narrated demo.
+     * Summary template for video uploads (.mp4/.mov): [ITERATION_PLAN]
+     * (server >= 0.18.0: timestamped issues keyed to cue frames, saved as
+     * <base>.iteration-plan.md), [VIDEO_CLIPPING] (server >= 0.28.0:
+     * clip-worthy highlights plus a <base>.clips.json cut list), or "" for
+     * the default meeting summary.  Audio uploads are unaffected.  Sticky;
+     * default iteration-plan.
+     *
+     * v0.17.0 replaced the boolean `vezir_iteration_plan` toggle; an
+     * install that never chose a template inherits that toggle's value.
      */
-    var iterationPlan: Boolean
-        get() = prefs.getBoolean(KEY_ITERATION_PLAN, true)
+    var videoTemplate: String
+        get() {
+            val stored = prefs.getString(KEY_VIDEO_TEMPLATE, null)
+            if (stored != null) return offeredVideoTemplateOr(stored)
+            return if (prefs.getBoolean(KEY_ITERATION_PLAN, true)) ITERATION_PLAN else ""
+        }
         set(value) {
-            prefs.edit().putBoolean(KEY_ITERATION_PLAN, value).apply()
+            prefs.edit()
+                .putString(KEY_VIDEO_TEMPLATE, offeredVideoTemplateOr(value))
+                .remove(KEY_ITERATION_PLAN)
+                .apply()
         }
 
     /**
@@ -339,7 +348,9 @@ class Prefs(context: Context) : TeamCredentialBacking {
         private const val KEY_PERSONAL = "vezir_personal"
         private const val KEY_AUTO_DELETE = "vezir_auto_delete"
         private const val KEY_SCREEN_MODE = "vezir_screen_mode"
+        // Pre-0.17.0 boolean; read once for migration into KEY_VIDEO_TEMPLATE.
         private const val KEY_ITERATION_PLAN = "vezir_iteration_plan"
+        private const val KEY_VIDEO_TEMPLATE = "vezir_video_template"
         private const val KEY_SUMMARY_PRESET = "vezir_summary_preset"
         private const val KEY_AUTO_LABEL = "vezir_auto_label"
         private const val KEY_SYNC = "vezir_sync"
@@ -382,15 +393,37 @@ class Prefs(context: Context) : TeamCredentialBacking {
         fun offeredPresetOr(id: String?): String =
             if (PRESET_OPTIONS.any { it.first == id }) id!! else DEFAULT_PRESET
 
+        /** millet summary templates (vezir/presets.py: TEMPLATES). */
+        const val ITERATION_PLAN = "iteration-plan"
+        const val VIDEO_CLIPPING = "video-clipping"
+
+        /** Video-template choices in display order; "" = no template. */
+        val VIDEO_TEMPLATE_OPTIONS: List<Pair<String, String>> = listOf(
+            ITERATION_PLAN to "Iteration plan (narrated demo)",
+            VIDEO_CLIPPING to "Clip highlights (short + long clips)",
+            "" to "None \u2014 meeting summary",
+        )
+
+        fun videoTemplateLabelFor(id: String): String =
+            VIDEO_TEMPLATE_OPTIONS.firstOrNull { it.first == id }?.second ?: id
+
+        /** Coerce a stored template to one that is still offered. */
+        fun offeredVideoTemplateOr(id: String?): String =
+            if (VIDEO_TEMPLATE_OPTIONS.any { it.first == id }) id!! else ITERATION_PLAN
+
         /**
          * Summary template for an upload filename, or null for the default
-         * meeting summary.  Only video files get the iteration plan (a plan
-         * makes no sense for an audio meeting).
+         * meeting summary.  Only video files get a template (a plan or a
+         * clip list makes no sense for an audio meeting).
          */
-        fun summaryTemplateFor(fileName: String, iterationPlanEnabled: Boolean): String? {
-            if (!iterationPlanEnabled) return null
+        fun summaryTemplateFor(fileName: String, videoTemplate: String): String? {
+            if (videoTemplate.isBlank()) return null
             val ext = fileName.substringAfterLast('.', "").lowercase()
-            return if (ext == "mp4" || ext == "mov") "iteration-plan" else null
+            return if (ext == "mp4" || ext == "mov") videoTemplate else null
         }
+
+        /** Pre-0.17.0 boolean form: true = iteration plan. */
+        fun summaryTemplateFor(fileName: String, iterationPlanEnabled: Boolean): String? =
+            summaryTemplateFor(fileName, if (iterationPlanEnabled) ITERATION_PLAN else "")
     }
 }

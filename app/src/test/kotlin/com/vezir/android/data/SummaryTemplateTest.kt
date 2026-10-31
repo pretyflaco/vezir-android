@@ -34,4 +34,28 @@ class SummaryTemplateTest {
     fun `extension matching is case insensitive`() {
         assertEquals("iteration-plan", Prefs.summaryTemplateFor("DEMO.MP4", true))
     }
+
+    @Test
+    fun `video template string selects the template`() {
+        assertEquals("video-clipping", Prefs.summaryTemplateFor("talk.mp4", Prefs.VIDEO_CLIPPING))
+        assertEquals("iteration-plan", Prefs.summaryTemplateFor("demo.mov", Prefs.ITERATION_PLAN))
+        assertNull(Prefs.summaryTemplateFor("talk.mp4", ""))
+        assertNull(Prefs.summaryTemplateFor("podcast.ogg", Prefs.VIDEO_CLIPPING))
+    }
+
+    @Test
+    fun `offered templates and labels`() {
+        assertEquals(
+            listOf("iteration-plan", "video-clipping", ""),
+            Prefs.VIDEO_TEMPLATE_OPTIONS.map { it.first },
+        )
+        assertEquals("video-clipping", Prefs.offeredVideoTemplateOr("video-clipping"))
+        assertEquals("", Prefs.offeredVideoTemplateOr(""))
+        assertEquals("iteration-plan", Prefs.offeredVideoTemplateOr("retired-template"))
+        assertEquals("iteration-plan", Prefs.offeredVideoTemplateOr(null))
+        assertEquals(
+            "Clip highlights (short + long clips)",
+            Prefs.videoTemplateLabelFor("video-clipping"),
+        )
+    }
 }

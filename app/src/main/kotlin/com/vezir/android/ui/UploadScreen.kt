@@ -46,10 +46,10 @@ fun UploadScreen(
     // v0.15.0: the recording's own destination team, never silently the
     // active one (which may have been switched since recording started).
     val cred = remember(teamId) { prefs.credentialFor(teamId) }
-    // v0.12.0: video uploads get millet's iteration-plan template when the
-    // user has the toggle on (Prefs.iterationPlan, default ON).
+    // v0.12.0 / v0.17.0: video uploads get the chosen millet template
+    // (Prefs.videoTemplate: iteration-plan by default, or video-clipping).
     val summaryTemplate = remember(fileName) {
-        Prefs.summaryTemplateFor(fileName, prefs.iterationPlan)
+        Prefs.summaryTemplateFor(fileName, prefs.videoTemplate)
     }
 
     // v0.4.4: probe /health to find a reachable URL before uploading.
