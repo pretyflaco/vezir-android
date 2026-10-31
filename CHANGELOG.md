@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.17.0 — video-clipping template
+
+### Added
+
+- **Template picker for video uploads.**  The Record screen's
+  "Iteration plan for screen recordings" switch is now a dropdown,
+  *Template for video uploads*, with three choices:
+  - **Iteration plan**: the narrated-demo plan, unchanged.
+  - **Clip highlights**: millet's `video-clipping` template (desktop vezir
+    >= 0.28.0, millet-pipeline >= 0.23.0).  You get short (15-60 s) and long
+    (1-3 min) clip-worthy moments plus a `clips.json` cut list that an agent
+    uses with ffmpeg.
+  - **None**: the meeting summary.
+
+  Audio uploads are unaffected.  An install that never picked a template
+  keeps its old switch value (on means iteration plan, which is still the
+  default).
+- Dated artifact names for `.video-clipping.md`, `.clips.json` and
+  `.clips.<lang>.json`, mirroring desktop vezir's `artifact_friendly_name`.
+  A cut list never takes the transcript's `<stem>.json` name.
+- Unit suite: **192 passed**, plus `lintDebug` and `assembleRelease`.  The
+  release APK has the same signing certificate as v0.16.1.
+
 ## v0.16.1 — capture diagnostics and crash-safe recovery
 
 ### Reliability

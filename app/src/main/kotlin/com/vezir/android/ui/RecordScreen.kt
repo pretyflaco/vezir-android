@@ -128,10 +128,12 @@ fun RecordScreen(
     var autoLabel by remember { mutableStateOf(prefs.autoLabel) }
     var sync by remember { mutableStateOf(prefs.sync) }
     var personal by remember { mutableStateOf(prefs.personal) }
-    // v0.12.0: screen+mic → MP4 mode (Tier 2 screen capture) and the
-    // iteration-plan template toggle for video uploads. Both sticky.
+    // v0.12.0: screen+mic → MP4 mode (Tier 2 screen capture); v0.17.0: the
+    // summary template for video uploads (was an iteration-plan switch).
+    // Both sticky.
     var screenMode by remember { mutableStateOf(prefs.screenMode) }
-    var iterationPlan by remember { mutableStateOf(prefs.iterationPlan) }
+    var videoTemplate by remember { mutableStateOf(prefs.videoTemplate) }
+    var templateMenuOpen by remember { mutableStateOf(false) }
     var presetMenuOpen by remember { mutableStateOf(false) }
     var permissionStatus by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -347,26 +349,44 @@ fun RecordScreen(
                 enabled = idleish,
             )
         }
-        // Iteration-plan template: only applies to video uploads (.mp4),
+        // Video summary template: only applies to video uploads (.mp4),
         // which a screen recording always is. Visible in both modes.
-        Row(
+        ExposedDropdownMenuBox(
+            expanded = templateMenuOpen,
+            onExpandedChange = { if (idleish) templateMenuOpen = !templateMenuOpen },
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "Iteration plan for screen recordings",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Switch(
-                checked = iterationPlan,
-                onCheckedChange = {
-                    iterationPlan = it
-                    prefs.iterationPlan = it
-                },
+            OutlinedTextField(
+                value = Prefs.videoTemplateLabelFor(videoTemplate),
+                onValueChange = { /* read-only */ },
+                readOnly = true,
+                singleLine = true,
                 enabled = idleish,
+                label = { Text("Template for video uploads") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = templateMenuOpen)
+                },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                // .menuAnchor(): see the preset dropdown above.
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
             )
+            ExposedDropdownMenu(
+                expanded = templateMenuOpen,
+                onDismissRequest = { templateMenuOpen = false },
+            ) {
+                Prefs.VIDEO_TEMPLATE_OPTIONS.forEach { (id, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            videoTemplate = id
+                            prefs.videoTemplate = id
+                            templateMenuOpen = false
+                        },
+                    )
+                }
+            }
         }
 
         // Hero status block.

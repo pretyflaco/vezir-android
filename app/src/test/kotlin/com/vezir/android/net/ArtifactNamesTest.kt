@@ -63,6 +63,9 @@ class ArtifactNamesTest {
             "01ABC.txt" to ".txt",
             "01ABC.pdf" to ".pdf",
             "01ABC.json" to ".json",
+            "01ABC.video-clipping.md" to ".video-clipping.md",
+            "01ABC.clips.json" to ".clips.json",
+            "01ABC.clips.de.json" to ".clips.de.json",
         )
         for ((serverName, ext) in cases) {
             val name = ArtifactNames.friendlyName(
