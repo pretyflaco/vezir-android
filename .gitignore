@@ -25,3 +25,6 @@ keystore.properties
 
 # Native build caches
 .cxx/
+
+# Deployment settings (default server URL, pinned host)
+deployment.properties

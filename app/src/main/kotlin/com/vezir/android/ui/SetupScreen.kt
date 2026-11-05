@@ -98,7 +98,7 @@ fun SetupScreen(
                 value = url,
                 onValueChange = { url = it.trim() },
                 label = { Text("Server URL") },
-                placeholder = { Text("http://muscle.tail178bd.ts.net:8000") },
+                placeholder = { Text("https://vezir.example.com") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),

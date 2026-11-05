@@ -14,7 +14,7 @@ class Nip55SignerTest {
     private val pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
     private val unsigned = Nip98Event.buildLogin(
         pubkeyHex = pubkey,
-        loginUrl = "https://vezir.twentyone.ist/api/auth/nostr/login",
+        loginUrl = "https://vezir.example.com/api/auth/nostr/login",
         createdAt = 1700000000L,
     )
     private val sig128 = "a".repeat(128)

@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
  */
 @Serializable
 data class TeamCredential(
-    val id: String,           // team slug, e.g. "blink"
+    val id: String,           // team slug, e.g. "team-a"
     val url: String,          // server URL
     val token: String,        // bearer token / session access JWT
     val caPem: String? = null,// PEM CA cert from v2 enrollment

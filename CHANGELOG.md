@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.17.1 — deployment settings at build time; no deployment references
+
+### Changed
+
+- **The default server URL and the pinned host come from the build, not the
+  source.**  `~/.android-keystores/vezir/deployment.properties` (or
+  `$VEZIR_ANDROID_DEPLOYMENT_PROPS`, or a gitignored `deployment.properties`
+  in the repo) sets `defaultServerUrl` and `pinnedHost`.  Gradle turns them
+  into `BuildConfig.DEFAULT_SERVER_URL` and generates
+  `res/xml/network_security_config.xml` from
+  `app/network_security_config.xml.template`, with the ISRG-root `<pin-set>`
+  for `pinnedHost` (same pins, same 2027-10-21 expiry as 0.15.1).
+  - Without the file a build has no default URL (the user types theirs)
+    and pins nothing (system trust).
+  - **A release build fails without both settings**, so a published APK
+    cannot silently lose its pin.
+- Sign-in text no longer names a particular organization's Google domain or
+  signer app; Google sign-in is offered when the server has it configured.
+- Docs, comments, placeholders, the CHANGELOG and tests use neutral names
+  (`vezir.example.com`, `team-a`/`team-b`, made-up people), with no
+  deployment hosts, real session ids or incident dates.  The checked-in
+  `*.apk.sha256` files no longer carry a local build path.
+
 ## v0.17.0 — video-clipping template
 
 ### Added
@@ -70,7 +93,7 @@ keystore since v0.1.0; upgrades install in place.
 
 Suite: 169 (21 new payload, exchange, and enrollment-state tests).
 
-## 0.15.1 — pin vezir.twentyone.ist to Let's Encrypt
+## 0.15.1 — pin the public host to Let's Encrypt
 
 On 2026-10-20 the private keys of eight eMudhra intermediate CAs were found
 to be recoverable from their certificates
@@ -82,7 +105,7 @@ to the app.
 
 ### Security
 
-- **`vezir.twentyone.ist` is pinned to the four ISRG (Let's Encrypt) root
+- **The public host is pinned to the four ISRG (Let's Encrypt) root
   keys** — X1, X2, YE, YR — in `network_security_config.xml`.  A chain that
   doesn't run through one of them is refused, whatever the device's root
   store says.  All four are pinned so Let's Encrypt can move issuance
@@ -105,7 +128,7 @@ Needs any server.  Suite: 148.
 
 ## 0.15.0 — the team belongs to the recording; move a session to another team
 
-Mirrors vezir 0.25/0.26 (desktop).  Incident 2026-10-02: a meeting recorded
+Mirrors vezir 0.25/0.26 (desktop).  A meeting recorded
 under the wrong team had no clean way out, and the same could happen here —
 the upload went to whichever team was **active when the upload ran**, and
 the header's team switcher stayed live while recording, so switching teams
@@ -200,7 +223,7 @@ pre-0.20.0 response without the field still deserializes).
   system chooser over every installed `nostrsigner:` app) — only the
   wording was Amber-specific.  All user-visible strings, the
   `AmberSigner` object (now `Nip55Signer`), tests, and docs now speak of
-  "a Nostr signer (Amber, Blink, …)".  Any app that implements the
+  "a Nostr signer (Amber, …)".  Any app that implements the
   NIP-55 intent contract shows up in the chooser with no vezir update.
 
 ### Fixed
@@ -210,7 +233,7 @@ pre-0.20.0 response without the field still deserializes).
   definitive auth rejection (refresh token revoked — "Session expired,
   sign in again") from a network/TLS failure ("Server unreachable —
   check your connection").  Before, an expired server certificate
-  (2026-09-10 incident) was reported as "Session expired — please sign
+  was reported as "Session expired — please sign
   in again", sending the user through a pointless re-login that then
   also failed with a confusing "Chain validation failed".
 
@@ -593,7 +616,7 @@ Polish on the 0.6.0 sign-in flows from on-device testing.
 
 Brings the app to parity with vezir 0.8.0's identity sign-in: instead of
 pasting a `vzr_` token, members sign in with **Amber** (their Nostr
-signer) or their **`@blinkbtc.com` Google account**.  Both yield a
+signer) or their **`@example.com` Google account**.  Both yield a
 short-lived session JWT that's used exactly like the old token
 (`Authorization: Bearer`), so the entire networking layer is unchanged.
 
@@ -609,7 +632,7 @@ short-lived session JWT that's used exactly like the old token
   No private key ever touches the app.  Handles signers returning either
   the full signed event or just the 128-hex signature, and decodes an
   `npub` result to hex if needed (`auth/Bech32.kt`).
-- **Sign in with Google (`@blinkbtc.com`).**  OAuth 2.0 Device
+- **Sign in with Google (`@example.com`).**  OAuth 2.0 Device
   Authorization Grant via vezir (`auth/GoogleLoginApi.kt`): the app shows
   the user a code, opens the verification URL in a browser, and polls
   `/api/auth/google/device/poll` until the server returns a JWT.  The
@@ -1028,7 +1051,7 @@ browser needed for any post-upload workflow.
 ### Changed
 
 * **Cleartext HTTP removed.**  The hardcoded cleartext allow-list for
-  muscle's IPs is gone.  HTTPS is now the only transport.  Re-enrol
+  the dev box's IPs is gone.  HTTPS is now the only transport.  Re-enrol
   with a new QR to get the `https://` URL.
 
 ### Backward compatible
@@ -1041,10 +1064,10 @@ browser needed for any post-upload workflow.
 ### Fixed
 
 * **nostr-vpn cleartext allow-list entry.**  `network_security_config.xml`
-  previously only listed Tailscale-style hosts (`muscle.tail178bd.ts.net`
+  previously only listed Tailscale-style hosts (`<host>.<tailnet>.ts.net`
   and `100.107.34.79`).  An upload over nvpn was rejected with
   `CLEARTEXT_NOT_PERMITTED` before the request reached the server.  Adds
-  muscle's nvpn tunnel IP `10.44.141.239` to the allow-list so teammates
+  the dev box's nvpn tunnel IP to the allow-list so teammates
   can use the Android client over either VPN transport.
 
   Note: nostr-vpn does not ship a MagicDNS-equivalent, so the IP is the
@@ -1135,7 +1158,7 @@ Requires vezir server ≥ 0.1.9; older servers silently ignore the field.
 
 First public release of the Vezir Android thin client.
 
-Sideload-only.  End-to-end validated against a real Blink dev-sync
+Sideload-only.  End-to-end validated against a real team dev-sync
 sandbox session: phone records Google Meet via MediaProjection +
 microphone, encodes OGG/Opus at 16 kHz mono / 24 kbps on-device, uploads
 to a self-hosted Vezir server over Tailscale, and the server's worker

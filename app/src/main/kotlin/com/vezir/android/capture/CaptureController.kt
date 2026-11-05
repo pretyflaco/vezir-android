@@ -86,7 +86,7 @@ object CaptureController {
      * finished recording is acknowledged; null while idle (the Record
      * screen then shows the active team).
      *
-     * Incident 2026-10-02 (desktop): the upload went to whichever team was
+     * Desktop vezir once uploaded to whichever team was
      * active when it RAN, so switching teams mid-recording — or before a
      * WorkManager retry — silently redirected a meeting.  The destination
      * now belongs to the recording; switching the app's active team

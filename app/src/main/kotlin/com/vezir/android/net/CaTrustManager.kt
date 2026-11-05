@@ -88,7 +88,7 @@ object CaTrustManager {
  * (socket / engine) calls (v0.15.1).  Android's system trust manager
  * throws on the hostname-less `checkServerTrusted(chain, authType)` as soon
  * as network_security_config.xml has a `<domain-config>`, and it needs the
- * hostname to enforce the vezir.twentyone.ist `<pin-set>`.  A plain
+ * hostname to enforce the pinned host's `<pin-set>`.  A plain
  * [X509TrustManager] wrapper would make TLS lean entirely on the custom CA
  * (failing every public host) and skip the pins.
  */

@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * v0.15.0: the destination team belongs to the recording.
  *
- * Incident 2026-10-02 (desktop vezir): the upload went to whichever team
+ * In desktop vezir, the upload went to whichever team
  * was ACTIVE when it ran, so switching teams mid-recording — or before a
  * WorkManager retry — silently redirected the meeting.  The upload now
  * resolves the credential of the team pinned at record time and never
@@ -23,24 +23,24 @@ class UploadTeamPinTest {
 
     private fun store(): TeamCredentialStore {
         val s = TeamCredentialStore(FakeBacking())
-        s.addOrUpdate(TeamCredential("blink", "https://s", "tok"), activate = true)
-        s.addOrUpdate(TeamCredential("twentyone", "https://s", "tok"))
+        s.addOrUpdate(TeamCredential("team-a", "https://s", "tok"), activate = true)
+        s.addOrUpdate(TeamCredential("team-b", "https://s", "tok"))
         return s
     }
 
     @Test
     fun pinnedTeamWinsOverActiveTeam() {
         val s = store()
-        // Recording pinned to twentyone; user then switches the app to blink.
-        s.setActiveId("blink")
-        assertEquals("twentyone", s.forUpload("twentyone")!!.id)
+        // Recording pinned to team-b; user then switches the app to team-a.
+        s.setActiveId("team-a")
+        assertEquals("team-b", s.forUpload("team-b")!!.id)
     }
 
     @Test
     fun unpinnedUploadUsesActiveTeam() {
         val s = store()
-        s.setActiveId("twentyone")
-        assertEquals("twentyone", s.forUpload(null)!!.id)
+        s.setActiveId("team-b")
+        assertEquals("team-b", s.forUpload(null)!!.id)
     }
 
     @Test
@@ -52,9 +52,9 @@ class UploadTeamPinTest {
 
     @Test
     fun captureDestinationIsPinnedAndClearedOnAcknowledge() {
-        CaptureController.pinDestination("blink")
-        CaptureController.setDestination("twentyone")
-        assertEquals("twentyone", CaptureController.destination.value)
+        CaptureController.pinDestination("team-a")
+        CaptureController.setDestination("team-b")
+        assertEquals("team-b", CaptureController.destination.value)
         CaptureController.acknowledgeFinished()
         assertNull(CaptureController.destination.value)
     }

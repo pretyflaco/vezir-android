@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERATED from app/network_security_config.xml.template by the
+  generate<Variant>NetworkSecurityConfig task (app/build.gradle.kts).
+  Edit the template, not the generated file.
+
+  HTTPS everywhere. No cleartext HTTP allowed.
+
+  The server runs behind Caddy with TLS. A custom CA cert (if any) is
+  trusted at the OkHttp layer via CaTrustManager, not via trust-anchors
+  here, so the XML stays simple: system CAs only.
+
+  Pinned host.  The deployment's public host (deployment.properties,
+  `pinnedHost`) is pinned to Let's Encrypt's roots.  In 2026 the private
+  keys of eight publicly trusted intermediates (chaining to roots in
+  Android's system store) were found to be recoverable; Android apps don't
+  consume Chrome's CRLSets and Android 10-13 only update the store with an
+  OS update, so without a pin anyone holding such a key could impersonate
+  the server.  Android checks the pins against the chain it validates, so a
+  match on ANY certificate in it is enough.  All four ISRG root keys are
+  pinned so issuance can move between hierarchies (today: leaf <- YE2 <-
+  Root YE <- ISRG Root X2 <- ISRG Root X1) without an app update.  Hashes =
+  base64(SHA-256(SubjectPublicKeyInfo)), computed from letsencrypt.org/certs
+  and cross-checked against a live chain:
+
+    openssl x509 -in CERT.pem -noout -pubkey \
+      | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+
+  `expiration` makes the pins fail OPEN after that date rather than brick
+  an app nobody updated; re-check and extend it before then.  Builds
+  without a pinned host, and servers on other hosts, use system trust.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+@PINNED_DOMAIN_CONFIG@
+</network-security-config>

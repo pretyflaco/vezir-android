@@ -20,7 +20,7 @@ import java.io.IOException
  *
  *   1. GET  /api/auth/google/config        → is Google enabled?
  *   2. POST /api/auth/google/device/start  → user_code + verification_url + device_code
- *   3. (user approves in a browser as their @blinkbtc.com account)
+ *   3. (user approves in a browser with their Google account)
  *   4. POST /api/auth/google/device/poll   → 200 JWT | 202 pending | terminal
  *
  * On success returns the same `{session_jwt, github, is_admin, email, …}`
