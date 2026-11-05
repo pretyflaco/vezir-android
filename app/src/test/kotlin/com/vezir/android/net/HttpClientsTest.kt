@@ -21,10 +21,10 @@ class HttpClientsTest {
         val req = HttpClients.authHeaders(
             Request.Builder().url("https://srv.example/api/sessions"),
             token = "vzr_test",
-            teamId = "blink",
+            teamId = "team-a",
         ).get().build()
         assertEquals("Bearer vzr_test", req.header("Authorization"))
-        assertEquals("blink", req.header("X-Team-Id"))
+        assertEquals("team-a", req.header("X-Team-Id"))
     }
 
     @Test

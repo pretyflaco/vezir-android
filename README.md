@@ -27,10 +27,10 @@ Alpha (**0.16.0**). Sideload only; no Play Store. Full history in
 ## Sign in
 
 On first launch, point the app at your server (e.g.
-`https://vezir.twentyone.ist`) and pick one:
+`https://vezir.example.com`) and pick one:
 
 - **Sign in with Nostr** — uses any local NIP-55 signer app
-  ([Amber](https://github.com/greenart7c3/Amber/releases), Blink, …)
+  ([Amber](https://github.com/greenart7c3/Amber/releases), …)
   holding your key. The app shows the system signer chooser; approve
   `get_public_key` then the login signature in your signer. Your key
   never touches the app.
@@ -74,7 +74,7 @@ dropdown.
 - Your identity authorized on the server (`npub` or `@domain` email) and a
   team membership — ask your operator.
 - For Nostr sign-in: a NIP-55 signer app
-  ([Amber](https://github.com/greenart7c3/Amber/releases), Blink, …) on
+  ([Amber](https://github.com/greenart7c3/Amber/releases), …) on
   the phone holding your key.
 - **No VPN.** The server is reached over ordinary HTTPS.
 

@@ -104,7 +104,8 @@ object ShareInbox {
     val incoming = kotlinx.coroutines.flow.MutableStateFlow<Uri?>(null)
 }
 
-private const val DEFAULT_SERVER_URL = "https://vezir.twentyone.ist"
+/** Pre-filled server URL (deployment.properties at build time; may be empty). */
+private val DEFAULT_SERVER_URL: String = BuildConfig.DEFAULT_SERVER_URL
 
 private sealed class Screen {
     object Splash : Screen()

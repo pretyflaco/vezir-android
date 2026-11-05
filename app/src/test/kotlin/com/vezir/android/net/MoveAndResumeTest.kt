@@ -12,13 +12,13 @@ class MoveAndResumeTest {
     @Test
     fun parsesMoveResponse() {
         val m = SessionApi.MoveParsing.parseMoved(
-            """{"ok":true,"session_id":"01S","from_team":"blink","to_team":"twentyone",
+            """{"ok":true,"session_id":"01S","from_team":"team-a","to_team":"team-b",
                "moved":true,"was_synced":true,"sync_queued":false,
-               "warning":"this session was already synced to blink's git repo; that copy stays there — remove it from the repo manually."}""",
-            requestedTeam = "twentyone",
+               "warning":"this session was already synced to team-a's git repo; that copy stays there — remove it from the repo manually."}""",
+            requestedTeam = "team-b",
         )
-        assertEquals("blink", m.fromTeam)
-        assertEquals("twentyone", m.toTeam)
+        assertEquals("team-a", m.fromTeam)
+        assertEquals("team-b", m.toTeam)
         assertTrue(m.moved && m.wasSynced)
         assertFalse(m.syncQueued)
         assertTrue(m.warning!!.contains("manually"))
@@ -26,8 +26,8 @@ class MoveAndResumeTest {
 
     @Test
     fun moveResponseToleratesMissingFields() {
-        val m = SessionApi.MoveParsing.parseMoved("{}", requestedTeam = "twentyone")
-        assertEquals("twentyone", m.toTeam)
+        val m = SessionApi.MoveParsing.parseMoved("{}", requestedTeam = "team-b")
+        assertEquals("team-b", m.toTeam)
         assertNull(m.warning)
     }
 
@@ -51,10 +51,10 @@ class MoveAndResumeTest {
     fun resumeStateIsKeyedByTeam() {
         val uri = "content://media/1"
         val url = "https://s"
-        assertTrue(UploadStateStore.matches(uri, url, "blink", uri, url, "blink"))
+        assertTrue(UploadStateStore.matches(uri, url, "team-a", uri, url, "team-a"))
         // Retargeted between attempts → never continue the old team's tus session.
-        assertFalse(UploadStateStore.matches(uri, url, "blink", uri, url, "twentyone"))
+        assertFalse(UploadStateStore.matches(uri, url, "team-a", uri, url, "team-b"))
         // State written by a pre-0.15.0 build (no team) never matches a pinned upload.
-        assertFalse(UploadStateStore.matches(uri, url, null, uri, url, "blink"))
+        assertFalse(UploadStateStore.matches(uri, url, null, uri, url, "team-a"))
     }
 }

@@ -28,17 +28,17 @@ class GoogleLoginApiTest {
     fun config_configured() {
         val c = json.decodeFromString(
             GoogleLoginApi.Config.serializer(),
-            """{"configured":true,"client_id":"x.apps.googleusercontent.com","allowed_domain":"blinkbtc.com"}""",
+            """{"configured":true,"client_id":"x.apps.googleusercontent.com","allowed_domain":"example.com"}""",
         )
         assertTrue(c.configured)
-        assertEquals("blinkbtc.com", c.allowed_domain)
+        assertEquals("example.com", c.allowed_domain)
     }
 
     @Test
     fun deviceStart_parsesCodeAndInterval() {
         val d = json.decodeFromString(
             GoogleLoginApi.DeviceStart.serializer(),
-            """{"device_code":"dc","user_code":"ABCD-EFGH","verification_url":"https://www.google.com/device","expires_in":1800,"interval":5,"allowed_domain":"blinkbtc.com"}""",
+            """{"device_code":"dc","user_code":"ABCD-EFGH","verification_url":"https://www.google.com/device","expires_in":1800,"interval":5,"allowed_domain":"example.com"}""",
         )
         assertEquals("ABCD-EFGH", d.user_code)
         assertEquals("dc", d.device_code)
@@ -65,11 +65,11 @@ class GoogleLoginApiTest {
     fun loginResponse_parsesJwtAndEmail() {
         val r = json.decodeFromString(
             GoogleLoginApi.LoginResponse.serializer(),
-            """{"session_jwt":"jwt123","github":"pretyflaco","is_admin":true,"email":"kemal@blinkbtc.com","expires_in":86400}""",
+            """{"session_jwt":"jwt123","github":"judy","is_admin":true,"email":"kemal@example.com","expires_in":86400}""",
         )
         assertEquals("jwt123", r.session_jwt)
-        assertEquals("pretyflaco", r.github)
+        assertEquals("judy", r.github)
         assertTrue(r.is_admin)
-        assertEquals("kemal@blinkbtc.com", r.email)
+        assertEquals("kemal@example.com", r.email)
     }
 }

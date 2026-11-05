@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
  *   1. **Nostr signer** — NIP-55 foreground intents: get the
  *      pubkey, build a NIP-98 event, have the signer sign it, POST it to
  *      `/api/auth/nostr/login` for a session JWT.
- *   2. **Google (@blinkbtc.com)** — OAuth device-code via vezir: show the
+ *   2. **Google** (when the server has it configured) — OAuth device-code via vezir: show the
  *      user a code + open the verification URL, poll for the JWT.
  *   3. **Token / QR** — the legacy advanced path ([onUseToken] → SetupScreen).
  *
@@ -170,7 +170,7 @@ fun LoginScreen(
         busy = true
         status = "Choose your Nostr signer…"
         // No forced package: let Android show the system chooser among all
-        // installed NIP-55 signers (Amber, Blink, …).  The signer the user
+        // installed NIP-55 signers (Amber, …).  The signer the user
         // picks is captured from the login result's `package` extra and
         // reused for the sign_event leg, so the whole flow stays with
         // their choice.
@@ -205,7 +205,7 @@ fun LoginScreen(
                     // back to vezir.  (The card also shows it with a Copy
                     // button.)
                     clipboard.setText(androidx.compose.ui.text.AnnotatedString(d.user_code))
-                    status = "Code copied. Approve in the browser as your @blinkbtc.com account…"
+                    status = "Code copied. Approve in the browser with your Google account…"
                     openUrl(openUrlTarget)
                     when (
                         val poll = api.pollUntilDone(
@@ -246,8 +246,8 @@ fun LoginScreen(
 
         Text(
             "Sign in to your Vezir server. Use a Nostr signer app (Amber, " +
-                "Blink…) if you have a Nostr key, or your @blinkbtc.com " +
-                "Google account.",
+                "…) if you have a Nostr key, or your Google account if the " +
+                "server offers Google sign-in.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -255,7 +255,7 @@ fun LoginScreen(
             value = url,
             onValueChange = { url = it.trim() },
             label = { Text("Server URL") },
-            placeholder = { Text("https://vezir.twentyone.ist") },
+            placeholder = { Text("https://vezir.example.com") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth(),

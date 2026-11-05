@@ -17,7 +17,7 @@ class Nip98EventTest {
     private val pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
     private val createdAt = 1700000000L
     private val tags = listOf(
-        listOf("u", "https://vezir.twentyone.ist/api/auth/nostr/login"),
+        listOf("u", "https://vezir.example.com/api/auth/nostr/login"),
         listOf("method", "POST"),
     )
 
@@ -26,7 +26,7 @@ class Nip98EventTest {
         val expected =
             "[0,\"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d\"," +
                 "1700000000,27235," +
-                "[[\"u\",\"https://vezir.twentyone.ist/api/auth/nostr/login\"]," +
+                "[[\"u\",\"https://vezir.example.com/api/auth/nostr/login\"]," +
                 "[\"method\",\"POST\"]],\"\"]"
         val actual = Nip98Event.canonicalJson(pubkey, createdAt, Nip98Event.KIND, tags, "")
         assertEquals(expected, actual)
@@ -35,7 +35,7 @@ class Nip98EventTest {
     @Test
     fun computeId_matchesServerGoldenVector() {
         val id = Nip98Event.computeId(pubkey, createdAt, Nip98Event.KIND, tags, "")
-        assertEquals("718c9fa6b3bcb2329430ce0e44b45a18a6d5c4f445b4adcd5e21daaf17e26a08", id)
+        assertEquals("d203ad5b2648bc5109274bce4784f4beac7f2de61fc3479bae6cebca2a7cb48f", id)
     }
 
     @Test
@@ -43,22 +43,22 @@ class Nip98EventTest {
         // Mirrors the server vector with non-ASCII + escaped chars in content.
         val content = "héllo \"quote\" \\ and \n newline"
         val id = Nip98Event.computeId(pubkey, createdAt, Nip98Event.KIND, tags, content)
-        assertEquals("fc27e6ec3e45447578bcef1bc96b219f1248fc6d3d296ed52fe9a9f3f1ce6c28", id)
+        assertEquals("ad08812593f222fd7606b2a0baa76de427c6be398e2b8e96111f2df4e19173a4", id)
     }
 
     @Test
     fun buildLogin_setsTagsAndId() {
         val u = Nip98Event.buildLogin(
             pubkeyHex = pubkey,
-            loginUrl = "https://vezir.twentyone.ist/api/auth/nostr/login",
+            loginUrl = "https://vezir.example.com/api/auth/nostr/login",
             createdAt = createdAt,
         )
         assertEquals(Nip98Event.KIND, u.kind)
         assertEquals(pubkey, u.pubkey)
         assertEquals("u", u.tags[0][0])
-        assertEquals("https://vezir.twentyone.ist/api/auth/nostr/login", u.tags[0][1])
+        assertEquals("https://vezir.example.com/api/auth/nostr/login", u.tags[0][1])
         assertEquals("method", u.tags[1][0])
         assertEquals("POST", u.tags[1][1])
-        assertEquals("718c9fa6b3bcb2329430ce0e44b45a18a6d5c4f445b4adcd5e21daaf17e26a08", u.id)
+        assertEquals("d203ad5b2648bc5109274bce4784f4beac7f2de61fc3479bae6cebca2a7cb48f", u.id)
     }
 }

@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /**
  * Minimal NIP-55 (Android signer) client — works with any installed
- * Nostr signer app (Amber, Blink, …).
+ * Nostr signer app (Amber, …).
  *
  * Unlike the desktop CLI (which uses NIP-46 over relays), Android talks to
  * the local signer via `nostrsigner:` intents — no relays, no clock-skew.

@@ -18,7 +18,7 @@ class SessionExpiryTest {
         val enc = Base64.getUrlEncoder().withoutPadding()
         val header = enc.encodeToString("""{"alg":"HS256","typ":"JWT"}""".toByteArray())
         val payload = enc.encodeToString(
-            """{"iss":"vezir","sub":"pretyflaco","is_admin":false,"iat":1,"exp":$exp}"""
+            """{"iss":"vezir","sub":"judy","is_admin":false,"iat":1,"exp":$exp}"""
                 .toByteArray(),
         )
         // Signature segment content is irrelevant to exp parsing.

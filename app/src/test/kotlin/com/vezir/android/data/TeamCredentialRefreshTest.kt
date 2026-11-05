@@ -27,7 +27,7 @@ class TeamCredentialRefreshTest {
     fun deserialisesLegacyJsonWithoutRefreshFields() {
         // Pre-0.7.0 persisted entry: no refreshToken / accessExpiresAt.
         val legacy = """
-            [{"id":"blink","url":"https://s","token":"eyJ.a.b","label":"Blink"}]
+            [{"id":"team-a","url":"https://s","token":"eyJ.a.b","label":"Team A"}]
         """.trimIndent()
         val list = json.decodeFromString<List<TeamCredential>>(legacy)
         assertEquals(1, list.size)
@@ -41,11 +41,11 @@ class TeamCredentialRefreshTest {
         val old = "eyJ.old.access"
         // Two teams from one login share the old token + refresh token.
         store.addOrUpdate(
-            TeamCredential("blink", "https://s", old, refreshToken = "vzrt_1"),
+            TeamCredential("team-a", "https://s", old, refreshToken = "vzrt_1"),
             activate = true,
         )
         store.addOrUpdate(
-            TeamCredential("twentyone", "https://s", old, refreshToken = "vzrt_1"),
+            TeamCredential("team-b", "https://s", old, refreshToken = "vzrt_1"),
         )
         // An unrelated team on a separate vzr_ token must not be touched.
         store.addOrUpdate(
@@ -61,11 +61,11 @@ class TeamCredentialRefreshTest {
 
         assertEquals(2, n)
         val teams = store.loadAll().associateBy { it.id }
-        assertEquals("eyJ.new.access", teams["blink"]!!.token)
-        assertEquals("vzrt_2", teams["blink"]!!.refreshToken)
-        assertEquals(12345L, teams["blink"]!!.accessExpiresAt)
-        assertEquals("eyJ.new.access", teams["twentyone"]!!.token)
-        assertEquals("vzrt_2", teams["twentyone"]!!.refreshToken)
+        assertEquals("eyJ.new.access", teams["team-a"]!!.token)
+        assertEquals("vzrt_2", teams["team-a"]!!.refreshToken)
+        assertEquals(12345L, teams["team-a"]!!.accessExpiresAt)
+        assertEquals("eyJ.new.access", teams["team-b"]!!.token)
+        assertEquals("vzrt_2", teams["team-b"]!!.refreshToken)
         // Untouched:
         assertEquals("vzr_static", teams["other"]!!.token)
         assertNull(teams["other"]!!.refreshToken)
@@ -75,7 +75,7 @@ class TeamCredentialRefreshTest {
     fun applyRefreshedToken_noMatch_returnsZero() {
         val store = TeamCredentialStore(FakeBacking())
         store.addOrUpdate(
-            TeamCredential("blink", "https://s", "eyJ.current", refreshToken = "vzrt_1"),
+            TeamCredential("team-a", "https://s", "eyJ.current", refreshToken = "vzrt_1"),
             activate = true,
         )
         val n = store.applyRefreshedToken(
@@ -92,7 +92,7 @@ class TeamCredentialRefreshTest {
     fun applyRefreshedToken_nullNewRefreshKeepsExisting() {
         val store = TeamCredentialStore(FakeBacking())
         store.addOrUpdate(
-            TeamCredential("blink", "https://s", "old", refreshToken = "vzrt_keep"),
+            TeamCredential("team-a", "https://s", "old", refreshToken = "vzrt_keep"),
             activate = true,
         )
         store.applyRefreshedToken("old", "new", newRefreshToken = null, accessExpiresAt = 0L)

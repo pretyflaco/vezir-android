@@ -14,11 +14,11 @@ class EnrollmentPayloadTest {
     @Test
     fun parsesCanonicalServerPayload() {
         // Exactly what segno encodes from build_payload(...) on the server.
-        val raw = """{"token":"vzr_abc","url":"http://muscle.tail178bd.ts.net:8000","v":1}"""
+        val raw = """{"token":"vzr_abc","url":"http://devbox.example.ts.net:8000","v":1}"""
         val p = EnrollmentPayload.parse(raw)
         assertNotNull(p)
         assertEquals(1, p!!.v)
-        assertEquals("http://muscle.tail178bd.ts.net:8000", p.url)
+        assertEquals("http://devbox.example.ts.net:8000", p.url)
         assertEquals("vzr_abc", p.token)
     }
 

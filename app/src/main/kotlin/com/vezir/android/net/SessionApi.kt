@@ -402,7 +402,7 @@ class SessionApi(
         val moved: Boolean,
         val wasSynced: Boolean,
         val syncQueued: Boolean,
-        /** E.g. "already synced to blink's git repo; that copy stays there". */
+        /** E.g. "already synced to team-a's git repo; that copy stays there". */
         val warning: String?,
     )
 

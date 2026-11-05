@@ -28,6 +28,86 @@ val keystoreProps = Properties().apply {
 }
 val hasReleaseSigning = keystoreProps.getProperty("storeFile") != null
 
+// Deployment settings: the default server URL offered at first launch and
+// the public host whose certificate chain is pinned (see
+// app/network_security_config.xml.template).  They describe one deployment,
+// so they live outside the repo like the signing config.  Resolution order:
+//   1. $VEZIR_ANDROID_DEPLOYMENT_PROPS (explicit override)
+//   2. ~/.android-keystores/vezir/deployment.properties (canonical)
+//   3. <repo>/deployment.properties (gitignored)
+// Keys: defaultServerUrl=https://vezir.example.com  pinnedHost=vezir.example.com
+// Without the file a build has no default URL and pins nothing; a RELEASE
+// build refuses to run without both (a published APK must keep its pin).
+val deploymentPropsFile: File? = sequenceOf(
+    System.getenv("VEZIR_ANDROID_DEPLOYMENT_PROPS")?.let { File(it) },
+    File(System.getProperty("user.home"), ".android-keystores/vezir/deployment.properties"),
+    rootProject.file("deployment.properties"),
+).firstOrNull { it != null && it.exists() }
+
+val deploymentProps = Properties().apply {
+    deploymentPropsFile?.inputStream()?.use { load(it) }
+}
+val deployDefaultServerUrl: String = deploymentProps.getProperty("defaultServerUrl", "").trim()
+val deployPinnedHost: String = deploymentProps.getProperty("pinnedHost", "").trim()
+
+require(deployDefaultServerUrl.isEmpty() || Regex("""https://[A-Za-z0-9.-]+(:\d+)?/?""").matches(deployDefaultServerUrl)) {
+    "deployment.properties: defaultServerUrl must be https://<host>[:port], got '$deployDefaultServerUrl'"
+}
+require(deployPinnedHost.isEmpty() || Regex("""[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+""").matches(deployPinnedHost)) {
+    "deployment.properties: pinnedHost must be a hostname, got '$deployPinnedHost'"
+}
+
+/** Writes res/xml/network_security_config.xml from the template. */
+abstract class GenerateNetworkSecurityConfig : DefaultTask() {
+    @get:InputFile
+    abstract val template: RegularFileProperty
+
+    @get:Input
+    abstract val pinnedHost: Property<String>
+
+    @get:Input
+    abstract val defaultServerUrl: Property<String>
+
+    @get:Input
+    abstract val requireDeployment: Property<Boolean>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val host = pinnedHost.get()
+        if (requireDeployment.get() && (host.isEmpty() || defaultServerUrl.get().isEmpty())) {
+            throw GradleException(
+                "Release build without deployment settings: set defaultServerUrl and " +
+                    "pinnedHost in ~/.android-keystores/vezir/deployment.properties " +
+                    "(or \$VEZIR_ANDROID_DEPLOYMENT_PROPS). A published APK must keep its pin."
+            )
+        }
+        val domainConfig = if (host.isEmpty()) "" else """
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">$host</domain>
+        <pin-set expiration="2027-10-21">
+            <!-- ISRG Root X1 (RSA 4096) -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+            <!-- ISRG Root X2 (ECDSA P-384) -->
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+            <!-- ISRG Root YE (ECDSA P-384, gen-y) -->
+            <pin digest="SHA-256">sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=</pin>
+            <!-- ISRG Root YR (RSA 4096, gen-y) -->
+            <pin digest="SHA-256">fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</pin>
+        </pin-set>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>"""
+        val out = outputDir.get().dir("xml").asFile
+        out.mkdirs()
+        val text = template.get().asFile.readText().replace("@PINNED_DOMAIN_CONFIG@", domainConfig)
+        File(out, "network_security_config.xml").writeText(text)
+    }
+}
+
 android {
     namespace = "com.vezir.android"
     compileSdk = 35
@@ -39,8 +119,8 @@ android {
         // inspection notes in vezir_plan.md).
         minSdk = 29
         targetSdk = 35
-        versionCode = 50
-        versionName = "0.17.0"
+        versionCode = 51
+        versionName = "0.17.1"
 
         // Hard cap on recording duration. v1 = 3 hours, per plan §18.
         // Capture service reads this from BuildConfig at runtime.
@@ -49,6 +129,10 @@ android {
             "MAX_RECORDING_MILLIS",
             "${3L * 60L * 60L * 1000L}L"
         )
+
+        // Pre-filled server URL on first launch; empty without
+        // deployment.properties (the user types their server's URL).
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$deployDefaultServerUrl\"")
     }
 
     buildFeatures {
@@ -121,6 +205,23 @@ android {
                 "META-INF/NOTICE*",
             )
         }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val name = variant.name.replaceFirstChar { it.uppercase() }
+        val task = tasks.register<GenerateNetworkSecurityConfig>(
+            "generate${name}NetworkSecurityConfig"
+        ) {
+            template.set(layout.projectDirectory.file("network_security_config.xml.template"))
+            pinnedHost.set(deployPinnedHost)
+            defaultServerUrl.set(deployDefaultServerUrl)
+            requireDeployment.set(variant.buildType == "release")
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(
+            task, GenerateNetworkSecurityConfig::outputDir
+        )
     }
 }
 

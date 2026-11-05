@@ -66,7 +66,7 @@ class UploadWorker(
         // v0.15.0: the destination team rides with the work (a slug — not a
         // secret).  Never fall back to the ACTIVE team when one was pinned:
         // the user may have switched teams since, and that would silently
-        // send the meeting to the wrong team (incident 2026-10-02, desktop).
+        // send the meeting to the wrong team.
         val teamId = inputData.getString(KEY_TEAM_ID)
 
         // Credentials are NEVER passed through WorkManager's Data (its DB

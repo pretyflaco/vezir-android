@@ -56,11 +56,11 @@ class LoginResponseRefreshTest {
               "expires_in": 3600,
               "refresh_expires_in": 604800,
               "github": "bob",
-              "email": "bob@blinkbtc.com"
+              "email": "bob@example.com"
             }
         """.trimIndent()
         val r = json.decodeFromString(GoogleLoginApi.LoginResponse.serializer(), raw)
         assertEquals("vzrt_GOOG", r.refresh_token)
-        assertEquals("bob@blinkbtc.com", r.email)
+        assertEquals("bob@example.com", r.email)
     }
 }

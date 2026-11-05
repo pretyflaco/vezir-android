@@ -24,12 +24,12 @@ class ResponseShapesTest {
         // vezir 0.7.0 response shape: no dashboard URLs.
         val raw = """
             {
-              "session_id": "01KQDPMRKXWTY37YH3KKC2JTF4",
+              "session_id": "01J3C3RGCSPJ5ES8N1A6PY2MQ4",
               "bytes": 266242
             }
         """.trimIndent()
         val r = json.decodeFromString(Uploader.UploadResponse.serializer(), raw)
-        assertEquals("01KQDPMRKXWTY37YH3KKC2JTF4", r.session_id)
+        assertEquals("01J3C3RGCSPJ5ES8N1A6PY2MQ4", r.session_id)
         assertEquals(266_242L, r.bytes)
     }
 
@@ -39,14 +39,14 @@ class ResponseShapesTest {
         // We accept them but don't decode them (ignoreUnknownKeys).
         val raw = """
             {
-              "session_id": "01KQDPMRKXWTY37YH3KKC2JTF4",
+              "session_id": "01J3C3RGCSPJ5ES8N1A6PY2MQ4",
               "bytes": 266242,
-              "dashboard_url": "http://srv/s/01KQDPMRKXWTY37YH3KKC2JTF4",
-              "dashboard_login_url": "http://srv/login?code=vzx_x&next=%2Fs%2F01KQDPMRKXWTY37YH3KKC2JTF4"
+              "dashboard_url": "http://srv/s/01J3C3RGCSPJ5ES8N1A6PY2MQ4",
+              "dashboard_login_url": "http://srv/login?code=vzx_x&next=%2Fs%2F01J3C3RGCSPJ5ES8N1A6PY2MQ4"
             }
         """.trimIndent()
         val r = json.decodeFromString(Uploader.UploadResponse.serializer(), raw)
-        assertEquals("01KQDPMRKXWTY37YH3KKC2JTF4", r.session_id)
+        assertEquals("01J3C3RGCSPJ5ES8N1A6PY2MQ4", r.session_id)
         assertEquals(266_242L, r.bytes)
     }
 
@@ -55,7 +55,7 @@ class ResponseShapesTest {
         val queued = """
             {
               "id": "01KQ...",
-              "github": "kasita",
+              "github": "ivan",
               "title": "smoke",
               "status": "queued",
               "created_at": "2026-04-30T01:00:00Z",
@@ -85,13 +85,13 @@ class ResponseShapesTest {
         // vezir >= 0.9.0 /upload/multi response carries a `parts` count.
         val raw = """
             {
-              "session_id": "01KQDPMRKXWTY37YH3KKC2JTF4",
+              "session_id": "01J3C3RGCSPJ5ES8N1A6PY2MQ4",
               "bytes": 532484,
               "parts": 3
             }
         """.trimIndent()
         val r = json.decodeFromString(Uploader.UploadResponse.serializer(), raw)
-        assertEquals("01KQDPMRKXWTY37YH3KKC2JTF4", r.session_id)
+        assertEquals("01J3C3RGCSPJ5ES8N1A6PY2MQ4", r.session_id)
         assertEquals(532_484L, r.bytes)
         assertEquals(3, r.parts)
     }
@@ -117,23 +117,23 @@ class ResponseShapesTest {
         // vezir 0.7.0 /api/me shape.
         val raw = """
             {
-              "github": "pretyflaco",
+              "github": "judy",
               "is_admin": true,
               "memberships": [
-                {"team_id": "blink",     "team_name": "Blink",     "role": "admin"},
-                {"team_id": "twentyone", "team_name": "Twentyone", "role": "scribe"}
+                {"team_id": "team-a",     "team_name": "Team A",     "role": "admin"},
+                {"team_id": "team-b", "team_name": "Team B", "role": "scribe"}
               ],
-              "alternate_urls": ["http://muscle.tail178bd.ts.net:8000"]
+              "alternate_urls": ["http://devbox.example.ts.net:8000"]
             }
         """.trimIndent()
         val me = json.decodeFromString(MeApi.MeResponse.serializer(), raw)
-        assertEquals("pretyflaco", me.github)
+        assertEquals("judy", me.github)
         assertTrue(me.is_admin)
         assertEquals(2, me.memberships.size)
-        assertEquals("blink", me.memberships[0].team_id)
-        assertEquals("Blink", me.memberships[0].team_name)
+        assertEquals("team-a", me.memberships[0].team_id)
+        assertEquals("Team A", me.memberships[0].team_name)
         assertEquals("admin", me.memberships[0].role)
-        assertEquals("twentyone", me.memberships[1].team_id)
+        assertEquals("team-b", me.memberships[1].team_id)
         assertEquals("scribe", me.memberships[1].role)
         assertEquals(1, me.alternate_urls.size)
     }

@@ -15,7 +15,7 @@ class ArtifactNamesTest {
     @Test
     fun titleSlug_lowercasesAndUnderscores() {
         assertEquals("brainstorm_phoenix", artifactTitleSlug("Brainstorm Phoenix"))
-        assertEquals("weekly_sync_blink", artifactTitleSlug("  Weekly Sync / @blink!  "))
+        assertEquals("weekly_sync_team_a", artifactTitleSlug("  Weekly Sync / @team-a!  "))
     }
 
     @Test
